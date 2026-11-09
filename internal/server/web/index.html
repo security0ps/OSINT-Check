@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#1c2026">
+  <title>OSINT-Check</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232563c9'/%3E%3Ccircle cx='14' cy='14' r='7' fill='none' stroke='white' stroke-width='3'/%3E%3Cpath d='M19 19l7 7' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">OSINT-Check <span id="modeChip" class="chip" hidden></span></div>
+    <div class="topbar-actions">
+      <button id="sourcesBtn" class="btn ghost" type="button" hidden>Quellen <span id="sourcesCount"></span></button>
+      <button id="logoutBtn" class="btn ghost" type="button" hidden>Abmelden</button>
+    </div>
+  </header>
+
+  <div id="demoBanner" class="banner" hidden>Demo-Modus: Alle Ergebnisse sind erfunden, und keine Anfrage verlässt diesen Rechner.</div>
+
+  <main id="app" class="layout" hidden>
+    <section class="panel input-panel" aria-labelledby="inputTitle">
+      <h1 id="inputTitle">Indikatoren prüfen</h1>
+      <p class="hint">URLs, Hashes, IPs, Domains oder E-Mail-Adressen, gern auch entschärft wie hxxp://evil[.]com. Bis zu <span id="maxItems">100</span> Werte pro Prüfung.</p>
+      <textarea id="input" spellcheck="false" autocomplete="off" aria-label="Indikatoren, einer pro Zeile" placeholder="https://verdaechtig.example/login&#10;44d88612fea8a8f36de82e1278abb02f&#10;203.0.113.7"></textarea>
+      <div class="file-row">
+        <button id="fileBtn" class="btn" type="button">Dateien wählen</button>
+        <span class="hint small">oder hierher ziehen</span>
+        <input id="fileInput" type="file" multiple hidden>
+      </div>
+      <p id="fileStatus" class="hint small" role="status" hidden></p>
+      <div class="input-row">
+        <label class="check"><input id="fresh" type="checkbox"> Zwischenspeicher umgehen</label>
+        <button id="sampleBtn" class="btn ghost" type="button" hidden>Beispiele</button>
+      </div>
+      <div class="input-row">
+        <button id="checkBtn" class="btn primary" type="button">Prüfen</button>
+        <button id="cancelBtn" class="btn" type="button" hidden>Abbrechen</button>
+      </div>
+      <p class="hint small">Dateien werden nicht hochgeladen: Der Hash entsteht hier im Browser, nur er wird geprüft. Interne Adressen werden nicht übertragen. Neue Scans werden nicht gestartet.</p>
+      <p id="formError" class="error" role="alert" hidden></p>
+    </section>
+
+    <section class="results" aria-labelledby="resultsTitle">
+      <div class="results-head">
+        <h2 id="resultsTitle">Ergebnisse</h2>
+        <div id="exportBar" class="export" hidden>
+          <button class="btn ghost" data-export="csv" type="button">CSV</button>
+          <button class="btn ghost" data-export="json" type="button">JSON</button>
+          <button class="btn ghost" data-export="md" type="button">Bericht</button>
+        </div>
+      </div>
+      <div id="progress" class="progress" hidden><div id="progressBar"></div></div>
+      <p id="summary" class="summary" aria-live="polite" hidden></p>
+      <div id="notices"></div>
+      <div id="empty" class="empty">
+        <p class="empty-title">Noch keine Prüfung</p>
+        <p>Füge links Werte ein und starte mit „Prüfen“ oder Strg+Enter.</p>
+      </div>
+      <div id="items"></div>
+    </section>
+  </main>
+
+  <section id="login" class="login" hidden>
+    <form id="loginForm" class="panel">
+      <h1>Anmelden</h1>
+      <label for="password">Team-Passwort</label>
+      <input id="password" type="password" autocomplete="current-password" required>
+      <button class="btn primary" type="submit">Anmelden</button>
+      <p id="loginError" class="error" role="alert" hidden></p>
+    </form>
+  </section>
+
+  <dialog id="sourcesDialog">
+    <form method="dialog" class="dialog-head">
+      <h2>Quellen und API-Keys</h2>
+      <button class="btn ghost" aria-label="Schließen">Schließen</button>
+    </form>
+    <p id="licenseNote" class="note">Die Gratis-Zugänge der meisten Dienste sind nicht für kommerzielle Nutzung gedacht. Prüfe die Bedingungen, bevor du das Tool im Unternehmen einsetzt.</p>
+    <div id="sourcesList"></div>
+    <div id="settingsArea" hidden>
+      <label for="internalDomains">Eigene Domains, die nie gesendet werden</label>
+      <textarea id="internalDomains" rows="3" spellcheck="false" placeholder="firma.de"></textarea>
+      <div class="dialog-foot">
+        <span id="settingsStatus" class="hint small" role="status"></span>
+        <button id="saveSettings" class="btn primary" type="button">Speichern</button>
+      </div>
+    </div>
+    <p id="teamNote" class="hint small" hidden>Keys werden im Team-Betrieb auf dem Server verwaltet.</p>
+  </dialog>
+
+  <script src="sha256.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

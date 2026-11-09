@@ -1,0 +1,8 @@
+.git
+dist
+deploy
+*.md
+*.exe
+.env
+**/.env
+config.json
