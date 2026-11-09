@@ -1,0 +1,16 @@
+# Geheimnisse und Serverdaten
+.env
+*.env
+!.env.example
+config.json
+deploy/config/
+deploy/certs/
+certs/
+*.pem
+*.key
+*.pfx
+*.crt
+
+# Build-Ergebnisse
+/dist/
+*.exe
