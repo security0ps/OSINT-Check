@@ -1,7 +1,0 @@
-{
-  "internal_domains": ["firma.de", "firma.local"],
-  "disabled_sources": [],
-  "limits": {
-    "virustotal": { "per_minute": 4, "per_day": 500 }
-  }
-}
