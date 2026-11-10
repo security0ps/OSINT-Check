@@ -1,17 +1,18 @@
 'use strict';
 (() => {
   const $ = (id) => document.getElementById(id);
+  const { t, message } = language;
   const LEVELS = {
-    malicious: 'Bösartig', suspicious: 'Verdächtig', no_finding: 'Kein Befund',
-    unchecked: 'Nicht geprüft', internal: 'Intern', pending: 'Läuft',
+    malicious: ['Bösartig', 'Malicious'], suspicious: ['Verdächtig', 'Suspicious'], no_finding: ['Kein Befund', 'No finding'],
+    unchecked: ['Nicht geprüft', 'Unchecked'], internal: ['Intern', 'Internal'], pending: ['Läuft', 'Running'],
   };
   const VERDICTS = {
-    malicious: 'Bösartig', suspicious: 'Verdächtig', weak: 'Schwacher Hinweis',
-    clean: 'Unauffällig', info: 'Bekannt', not_found: 'Nicht bekannt',
+    malicious: ['Bösartig', 'Malicious'], suspicious: ['Verdächtig', 'Suspicious'], weak: ['Schwacher Hinweis', 'Weak signal'],
+    clean: ['Unauffällig', 'Clean'], info: ['Bekannt', 'Known'], not_found: ['Nicht bekannt', 'Unknown'],
   };
   const STATES = {
-    pending: 'Prüft …', waiting: 'Wartet auf Limit', error: 'Fehler', no_key: 'Kein API-Key',
-    limit: 'Limit erreicht', skipped: 'Abgebrochen',
+    pending: ['Prüft …', 'Checking …'], waiting: ['Wartet auf Limit', 'Waiting for quota'], error: ['Fehler', 'Error'], no_key: ['Kein API-Key', 'No API key'],
+    limit: ['Limit erreicht', 'Rate limit reached'], skipped: ['Abgebrochen', 'Cancelled'],
   };
   const TYPES = { ipv4: 'IPv4', ipv6: 'IPv6', domain: 'Domain', url: 'URL', md5: 'MD5', sha1: 'SHA-1', sha256: 'SHA-256' };
 
@@ -22,6 +23,10 @@
   const rows = new Map();
   const fileNames = new Map(); // SHA-256 -> Dateinamen, bleiben im Browser
   let hashing = null;
+
+  function label(labels, key) {
+    return Object.hasOwn(labels, key) ? t(...labels[key]) : '';
+  }
 
   function el(tag, cls, text) {
     const n = document.createElement(tag);
@@ -41,6 +46,7 @@
     if (!res.ok) {
       const err = new Error(data.error || 'Der Dienst hat nicht wie erwartet geantwortet');
       err.status = res.status;
+      err.code = data.error_code;
       throw err;
     }
     return data;
@@ -50,7 +56,7 @@
     try {
       meta = await api('meta');
     } catch (e) {
-      showError(e.message);
+      showError(e.message, e.code);
       $('app').hidden = false;
       return;
     }
@@ -66,7 +72,7 @@
     $('demoBanner').hidden = !meta.demo;
     const chip = $('modeChip');
     chip.hidden = false;
-    chip.textContent = meta.demo ? 'Demo' : meta.team ? 'Team' : 'Lokal';
+    chip.textContent = meta.demo ? 'Demo' : meta.team ? 'Team' : t('Lokal', 'Local');
     $('logoutBtn').hidden = !meta.auth_required;
     $('sourcesBtn').hidden = false;
     $('maxItems').textContent = meta.max_indicators;
@@ -125,19 +131,19 @@
 
   function handleError(e) {
     if (e.status === 401) { location.reload(); return; }
-    showError(e.message);
+    showError(e.message, e.code);
   }
 
   function setRunning(on) {
     $('checkBtn').disabled = on;
     $('fileBtn').disabled = on;
-    $('checkBtn').textContent = on ? 'Prüfung läuft …' : 'Prüfen';
+    $('checkBtn').textContent = on ? t('Prüfung läuft …', 'Checking …') : t('Prüfen', 'Check');
     $('cancelBtn').hidden = !on;
     $('progress').hidden = !on;
   }
 
-  function showError(msg) {
-    $('formError').textContent = msg;
+  function showError(msg, code) {
+    setMessage($('formError'), msg, code);
     $('formError').hidden = !msg;
   }
 
@@ -158,28 +164,28 @@
     const box = $('summary');
     box.hidden = view.items.length === 0;
     const count = (l) => view.items.filter((i) => i.assessment.level === l).length;
-    const parts = [[count('malicious'), 'bösartig'], [count('suspicious'), 'verdächtig'], [count('no_finding'), 'ohne Befund'],
-      [count('unchecked'), 'nicht geprüft'], [count('internal'), 'intern']].filter(([n]) => n > 0);
-    box.replaceChildren(document.createTextNode(`${view.items.length} ${view.items.length === 1 ? 'Wert' : 'Werte'}: `));
+    const parts = [[count('malicious'), t('bösartig', 'malicious')], [count('suspicious'), t('verdächtig', 'suspicious')], [count('no_finding'), t('ohne Befund', 'without findings')],
+      [count('unchecked'), t('nicht geprüft', 'unchecked')], [count('internal'), t('intern', 'internal')]].filter(([n]) => n > 0);
+    box.replaceChildren(document.createTextNode(`${view.items.length} ${view.items.length === 1 ? t('Wert', 'indicator') : t('Werte', 'indicators')}: `));
     parts.forEach(([n, label], i) => {
       if (i) box.append(' · ');
       box.append(el('b', '', String(n)), ` ${label}`);
     });
     if (!view.finished) {
       const waiting = view.items.some((it) => it.results.some((r) => r.status === 'waiting'));
-      box.append(` · ${view.done} von ${view.total} Abfragen${waiting ? ', einige warten auf das Limit' : ''}`);
+      box.append(` · ${view.done} ${t('von', 'of')} ${view.total} ${t('Abfragen', 'lookups')}${waiting ? t(', einige warten auf das Limit', ', some are waiting for quota') : ''}`);
     } else if (view.cancelled) {
-      box.append(' · abgebrochen');
+      box.append(t(' · abgebrochen', ' · cancelled'));
     }
   }
 
   function renderNotices(view) {
     const box = $('notices');
     box.replaceChildren();
-    if (view.unknown.length) box.append(el('p', 'notice', `Nicht erkannt und übersprungen: ${view.unknown.join(', ')}`));
-    if (view.truncated) box.append(el('p', 'notice', `${view.truncated} Werte über dem Limit wurden nicht geprüft.`));
+    if (view.unknown.length) box.append(el('p', 'notice', `${t('Nicht erkannt und übersprungen', 'Unrecognized and skipped')}: ${view.unknown.join(', ')}`));
+    if (view.truncated) box.append(el('p', 'notice', `${view.truncated} ${t('Werte über dem Limit wurden nicht geprüft.', 'indicators exceeded the limit and were skipped.')}`));
     if (view.items.length && view.items.every((i) => i.results.every((r) => r.status === 'no_key') && !i.indicator.internal)) {
-      box.append(el('p', 'notice', 'Für diese Werte ist keine Quelle eingerichtet. Trage unter „Quellen“ API-Keys ein.'));
+      box.append(el('p', 'notice', t('Für diese Werte ist keine Quelle eingerichtet. Trage unter „Quellen“ API-Keys ein.', 'No source is configured for these indicators. Add API keys under “Sources”.')));
     }
   }
 
@@ -195,7 +201,7 @@
     row.type.textContent = TYPES[item.indicator.type] || item.indicator.type;
     row.value.textContent = item.indicator.defanged;
     row.badge.dataset.level = a.level;
-    row.badge.textContent = LEVELS[a.level] + (a.confidence ? ` · ${a.confidence}` : '');
+    row.badge.textContent = label(LEVELS, a.level) + (a.confidence ? ` · ${message(a.confidence)}` : '');
     row.meta.textContent = metaLine(item);
     if (row.root.open) fillBody(row, item);
   }
@@ -206,10 +212,10 @@
 
   function metaLine(item) {
     const a = item.assessment;
-    if (a.level === 'internal') return 'Nicht übertragen';
+    if (a.level === 'internal') return t('Nicht übertragen', 'Never transmitted');
     const name = fileLabel(item);
-    const left = `${name ? `${name} · ` : ''}${a.answered} von ${a.total} Quellen geantwortet`;
-    return a.hits ? `${left}, ${a.hits} mit Treffer` : left;
+    const left = `${name ? `${name} · ` : ''}${a.answered} ${t('von', 'of')} ${a.total} ${t('Quellen geantwortet', 'sources responded')}`;
+    return a.hits ? `${left}, ${a.hits} ${t('mit Treffer', 'with hits')}` : left;
   }
 
   function buildRow(i) {
@@ -230,22 +236,22 @@
   }
 
   function fillBody(row, item) {
-    const sig = JSON.stringify(item);
+    const sig = language.current + JSON.stringify(item);
     if (sig === row.sig) return;
     row.sig = sig;
     const a = item.assessment;
-    const nodes = [el('p', 'action', a.action)];
+    const nodes = [el('p', 'action', message(a.action, a.action_code))];
     if (a.reasons.length) {
       const list = el('ul', 'reasons');
-      a.reasons.forEach((r) => list.append(el('li', '', r)));
+      a.reasons.forEach((r) => list.append(el('li', '', reasonText(r, item))));
       nodes.push(list);
     }
-    (item.indicator.notes || []).forEach((n) => nodes.push(el('p', 'item-notes', n)));
+    (item.indicator.notes || []).forEach((n) => nodes.push(el('p', 'item-notes', message(n))));
     if (item.results.length) nodes.push(sourceTable(item.results));
     if (!item.indicator.internal) nodes.push(externalLinks(item.indicator));
     if (navigator.clipboard) {
       const actions = el('div', 'copy-row');
-      actions.append(copyButton('Wert kopieren', item.indicator.value), copyButton('Entschärft kopieren', item.indicator.defanged));
+      actions.append(copyButton(t('Wert kopieren', 'Copy value'), item.indicator.value), copyButton(t('Entschärft kopieren', 'Copy defanged value'), item.indicator.defanged));
       nodes.push(actions);
     }
     row.body.replaceChildren(...nodes);
@@ -261,7 +267,7 @@
   // bekommen keine Links, damit sie nicht versehentlich hinausgehen.
   function externalLinks(ind) {
     const box = el('div', 'external');
-    box.append(el('p', 'hint small', 'Weiter analysieren: öffnet den Dienst und kopiert den Wert. Gratis-Analysen sind dort öffentlich, also keine vertraulichen Inhalte einreichen.'));
+    box.append(el('p', 'hint small', t('Weiter analysieren: öffnet den Dienst und kopiert den Wert. Gratis-Analysen sind dort öffentlich, also keine vertraulichen Inhalte einreichen.', 'Investigate further: opens the service and copies the value. Free analyses are public, so avoid submitting confidential data.')));
     const row = el('div', 'copy-row');
     const field = ANYRUN_FIELDS[ind.type];
     if (field) {
@@ -291,7 +297,7 @@
     b.type = 'button';
     b.addEventListener('click', async () => {
       await navigator.clipboard.writeText(text);
-      b.textContent = 'Kopiert';
+      b.textContent = t('Kopiert', 'Copied');
       setTimeout(() => { b.textContent = label; }, 1200);
     });
     return b;
@@ -305,18 +311,18 @@
       const name = el('td', 'src-name', r.name);
       const state = el('td', 'src-state');
       if (r.status === 'ok') {
-        const b = el('span', 'badge', VERDICTS[r.verdict] || r.verdict);
+        const b = el('span', 'badge', label(VERDICTS, r.verdict) || r.verdict);
         b.dataset.v = r.verdict;
         state.append(b);
       } else {
-        state.append(el('span', 'badge', STATES[r.status] || r.status));
+        state.append(el('span', 'badge', label(STATES, r.status) || r.status));
       }
       const detail = el('td', 'src-detail');
-      if (r.error) detail.append(el('div', 'line', r.error));
-      if (r.summary) detail.append(el('div', 'line', r.summary + (r.cached ? ' (aus Zwischenspeicher)' : '')));
+      if (r.error) detail.append(el('div', 'line', message(r.error)));
+      if (r.summary) detail.append(el('div', 'line', message(r.summary) + (r.cached ? t(' (aus Zwischenspeicher)', ' (cached)') : '')));
       (r.details || []).forEach((d) => {
         const kv = el('div', 'kv');
-        kv.append(el('b', '', `${d.k}: `), d.v);
+        kv.append(el('b', '', `${message(d.k)}: `), d.v);
         detail.append(kv);
       });
       if (r.tags && r.tags.length) {
@@ -325,7 +331,7 @@
         detail.append(tags);
       }
       if (isSafeLink(r.link)) {
-        const a = el('a', '', 'Bericht öffnen');
+        const a = el('a', '', t('Bericht öffnen', 'Open report'));
         a.href = r.link;
         a.target = '_blank';
         a.rel = 'noopener noreferrer';
@@ -359,8 +365,8 @@
 
   function formatSize(n) {
     if (n < 1024 * 1024) return `${Math.max(1, Math.round(n / 1024))} KB`;
-    if (n < 1024 ** 3) return `${(n / 1024 ** 2).toFixed(1).replace('.', ',')} MB`;
-    return `${(n / 1024 ** 3).toFixed(1).replace('.', ',')} GB`;
+    if (n < 1024 ** 3) return `${(n / 1024 ** 2).toLocaleString(language.current, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} MB`;
+    return `${(n / 1024 ** 3).toLocaleString(language.current, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} GB`;
   }
 
   async function hashFiles(files) {
@@ -379,7 +385,7 @@
       const prefix = files.length > 1 ? `${i + 1}/${files.length}: ` : '';
       try {
         const hash = await hashFile(file, state, (p) => {
-          status.textContent = `${prefix}Hash von ${file.name} (${formatSize(file.size)}): ${Math.round(p * 100)} %`;
+          status.textContent = `${prefix}${t('Hash von', 'Hashing')} ${file.name} (${formatSize(file.size)}): ${Math.round(p * 100)} %`;
         });
         if (hash === null) break;
         hashes.push(hash);
@@ -401,7 +407,7 @@
     const known = box.value.split(/\s+/);
     const fresh = hashes.filter((h, i) => hashes.indexOf(h) === i && !known.includes(h));
     box.value = [box.value.trim(), ...fresh].filter(Boolean).join('\n');
-    const error = $('formError').textContent;
+    const error = $('formError').dataset.message;
     await start();
     if (error && !$('formError').textContent) showError(error);
   }
@@ -415,16 +421,16 @@
       const row = el('div', 'source-row');
       const top = el('div', 'source-top');
       top.append(el('span', 'source-name', s.name));
-      const state = el('span', 'badge', s.configured ? 'Aktiv' : 'Kein API-Key');
+      const state = el('span', 'badge', s.configured ? t('Aktiv', 'Active') : label(STATES, 'no_key'));
       if (s.configured) state.dataset.v = 'clean';
       top.append(state);
       row.append(top);
       const limits = [];
-      if (s.limit.per_minute) limits.push(`${s.limit.per_minute}/Minute`);
-      if (s.limit.per_day) limits.push(`${s.limit.per_day}/Tag, heute ${s.used_today} genutzt`);
-      row.append(el('span', 'hint small', [s.license, limits.join(', ')].filter(Boolean).join('. ')));
+      if (s.limit.per_minute) limits.push(`${s.limit.per_minute}/${t('Minute', 'minute')}`);
+      if (s.limit.per_day) limits.push(`${s.limit.per_day}/${t('Tag', 'day')}, ${s.used_today} ${t('heute genutzt', 'used today')}`);
+      row.append(el('span', 'hint small', [message(s.license), limits.join(', ')].filter(Boolean).join('. ')));
       if (s.signup && isSafeLink(s.signup)) {
-        const a = el('a', 'small', s.key_name ? 'API-Key holen' : 'Website');
+        const a = el('a', 'small', s.key_name ? t('API-Key holen', 'Get API key') : 'Website');
         a.href = s.signup; a.target = '_blank'; a.rel = 'noopener noreferrer';
         row.append(a);
       }
@@ -432,7 +438,7 @@
     });
     if (meta.editable) addKeyInputs(box);
     $('internalDomains').value = (meta.internal_domains || []).join('\n');
-    $('settingsStatus').textContent = '';
+    setMessage($('settingsStatus'), '');
   }
 
   function addKeyInputs(box) {
@@ -442,7 +448,7 @@
       seen.add(s.key_name);
       const row = el('div', 'source-row');
       const shared = meta.sources.filter((x) => x.key_name === s.key_name).map((x) => x.name).join(', ');
-      const label = el('label', '', `API-Key: ${shared}`);
+      const label = el('label', '', `${t('API-Key', 'API key')}: ${shared}`);
       const id = 'key-' + s.key_name;
       label.htmlFor = id;
       const input = el('input');
@@ -450,7 +456,7 @@
       input.id = id;
       input.autocomplete = 'off';
       input.dataset.key = s.key_name;
-      input.placeholder = s.configured ? 'Gespeichert. Neuer Wert ersetzt den Key, „-“ löscht ihn' : 'Key einfügen';
+      input.placeholder = s.configured ? t('Gespeichert. Neuer Wert ersetzt den Key, „-“ löscht ihn', 'Saved. Enter a new value to replace the key or “-” to remove it') : t('Key einfügen', 'Enter key');
       row.append(label, input);
       box.append(row);
     });
@@ -468,9 +474,9 @@
       await refreshMeta();
       applyStatus();
       renderSources();
-      $('settingsStatus').textContent = 'Gespeichert';
+      setMessage($('settingsStatus'), 'Gespeichert');
     } catch (e) {
-      $('settingsStatus').textContent = e.message;
+      setMessage($('settingsStatus'), e.message, e.code);
     }
   }
 
@@ -489,27 +495,27 @@
   }
 
   function exportCSV() {
-    const lines = [['Typ', 'Wert (entschärft)', 'Datei', 'Einstufung', 'Konfidenz', 'Empfehlung', 'Quelle', 'Status', 'Quellen-Ergebnis', 'Zusammenfassung', 'Bericht']];
+    const lines = [[t('Typ', 'Type'), t('Wert (entschärft)', 'Defanged value'), t('Datei', 'File'), t('Einstufung', 'Assessment'), t('Konfidenz', 'Confidence'), t('Empfehlung', 'Recommendation'), t('Quelle', 'Source'), 'Status', t('Quellen-Ergebnis', 'Source verdict'), t('Zusammenfassung', 'Summary'), t('Bericht', 'Report')]];
     job.items.forEach((it) => {
       const a = it.assessment;
-      const base = [it.indicator.type, it.indicator.defanged, fileLabel(it), LEVELS[a.level], a.confidence || '', a.action];
+      const base = [it.indicator.type, it.indicator.defanged, fileLabel(it), label(LEVELS, a.level), message(a.confidence) || '', message(a.action, a.action_code)];
       if (!it.results.length) lines.push([...base, '', '', '', '', '']);
-      it.results.forEach((r) => lines.push([...base, r.name, STATES[r.status] || 'OK', VERDICTS[r.verdict] || '', r.summary || r.error || '', r.link || '']));
+      it.results.forEach((r) => lines.push([...base, r.name, label(STATES, r.status) || 'OK', label(VERDICTS, r.verdict) || '', message(r.summary || r.error) || '', r.link || '']));
     });
     return '﻿' + lines.map((l) => l.map(csvCell).join(';')).join('\r\n');
   }
 
   function exportMD() {
-    const out = [`# OSINT-Check Bericht`, '', `Erstellt: ${new Date().toLocaleString('de-DE')}`, ''];
+    const out = [`# OSINT-Check ${t('Bericht', 'report')}`, '', `${t('Erstellt', 'Created')}: ${new Date().toLocaleString(language.current)}`, ''];
     job.items.forEach((it) => {
       const a = it.assessment;
       const name = fileLabel(it);
-      out.push(`## \`${it.indicator.defanged}\``, '', ...(name ? [`- **Datei:** ${name}`] : []), `- **Typ:** ${TYPES[it.indicator.type]}`, `- **Einstufung:** ${LEVELS[a.level]}${a.confidence ? ` (Konfidenz ${a.confidence})` : ''}`, `- **Empfehlung:** ${a.action}`);
-      a.reasons.forEach((r) => out.push(`- ${r}`));
+      out.push(`## \`${it.indicator.defanged}\``, '', ...(name ? [`- **${t('Datei', 'File')}:** ${name}`] : []), `- **${t('Typ', 'Type')}:** ${TYPES[it.indicator.type]}`, `- **${t('Einstufung', 'Assessment')}:** ${label(LEVELS, a.level)}${a.confidence ? ` (${t('Konfidenz', 'confidence')} ${message(a.confidence)})` : ''}`, `- **${t('Empfehlung', 'Recommendation')}:** ${message(a.action, a.action_code)}`);
+      a.reasons.forEach((r) => out.push(`- ${reasonText(r, it)}`));
       if (it.results.length) {
-        out.push('', '| Quelle | Ergebnis | Details |', '|---|---|---|');
+        out.push('', t('| Quelle | Ergebnis | Details |', '| Source | Result | Details |'), '|---|---|---|');
         const esc = (s) => String(s || '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
-        it.results.forEach((r) => out.push(`| ${esc(r.name)} | ${esc(VERDICTS[r.verdict] || STATES[r.status])} | ${esc(r.summary || r.error)} |`));
+        it.results.forEach((r) => out.push(`| ${esc(r.name)} | ${esc(label(VERDICTS, r.verdict) || label(STATES, r.status))} | ${esc(message(r.summary || r.error))} |`));
       }
       out.push('');
     });
@@ -566,7 +572,7 @@
   });
   $('saveSettings').addEventListener('click', saveSettings);
   $('exportBar').addEventListener('click', (e) => {
-    const f = e.target.dataset.export;
+    const f = e.target.closest('[data-export]')?.dataset.export;
     if (f) download(f);
   });
   $('logoutBtn').addEventListener('click', async () => {
@@ -579,10 +585,36 @@
       await api('login', 'POST', { password: $('password').value });
       location.reload();
     } catch (err) {
-      $('loginError').textContent = err.message;
+      setMessage($('loginError'), err.message, err.code);
       $('loginError').hidden = false;
     }
   });
 
+  function reasonText(reason, item) {
+    for (const result of item.results) {
+      if (reason === result.name + ': ' + result.summary) {
+        return result.name + ': ' + message(result.summary);
+      }
+    }
+    return message(reason);
+  }
+
+  function setMessage(node, value, code = '') {
+    node.dataset.message = value;
+    node.dataset.code = code;
+    node.textContent = message(value, code);
+  }
+
+  language.bind(() => {
+    if (meta && !$('app').hidden) {
+      $('modeChip').textContent = meta.demo ? 'Demo' : meta.team ? 'Team' : t('Lokal', 'Local');
+    }
+    $('checkBtn').textContent = !$('cancelBtn').hidden && !hashing
+      ? t('Prüfung läuft …', 'Checking …') : t('Prüfen', 'Check');
+    document.querySelectorAll('[data-message]').forEach(node => {
+      node.textContent = message(node.dataset.message, node.dataset.code);
+    });
+    if (job) render(job);
+  });
   init();
 })();

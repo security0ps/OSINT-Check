@@ -24,6 +24,7 @@ const (
 type Assessment struct {
 	Level      Level    `json:"level"`
 	Confidence string   `json:"confidence,omitempty"` // hoch, mittel, niedrig
+	ActionCode string   `json:"action_code"`
 	Action     string   `json:"action"`
 	Reasons    []string `json:"reasons"`
 	Answered   int      `json:"answered"` // Quellen mit Antwort
@@ -37,6 +38,7 @@ func Assess(it Item, final bool) Assessment {
 	a := Assessment{Reasons: []string{}}
 	if it.Indicator.Internal {
 		a.Level = LevelInternal
+		a.ActionCode = "internal"
 		a.Action = "Interner Wert, wurde nicht an externe Dienste gesendet"
 		return a
 	}
@@ -86,29 +88,38 @@ func Assess(it Item, final bool) Assessment {
 	switch {
 	case len(mal) >= 2:
 		a.Level, a.Confidence = LevelMalicious, "hoch"
+		a.ActionCode = "investigate"
 		a.Action = "Blockieren prüfen und Vorfall nachgehen"
 	case len(mal) == 1 && len(susp)+len(weak) > 0:
 		a.Level, a.Confidence = LevelMalicious, "mittel"
+		a.ActionCode = "verify_source"
 		a.Action = "Blockieren prüfen und zweite Quelle kontrollieren"
 	case len(mal) == 1:
 		a.Level, a.Confidence = LevelMalicious, "niedrig"
+		a.ActionCode = "single_source"
 		a.Action = "Nur eine Quelle meldet das, vor dem Blockieren manuell prüfen"
 	case len(susp) >= 2:
 		a.Level, a.Confidence = LevelSuspicious, "mittel"
+		a.ActionCode = "review"
 		a.Action = "Beobachten und manuell prüfen"
 	case len(susp) == 1 || len(weak) >= 2:
 		a.Level, a.Confidence = LevelSuspicious, "niedrig"
+		a.ActionCode = "review"
 		a.Action = "Beobachten und manuell prüfen"
 	case running:
 		a.Level = LevelPending
+		a.ActionCode = "pending"
 		a.Action = "Prüfung läuft"
 	case a.Answered == 0:
 		a.Level = LevelUnchecked
+		a.ActionCode = "unanswered"
 		a.Action = "Keine Quelle hat geantwortet, Ergebnis ist nicht aussagekräftig"
 	default:
 		a.Level = LevelNoFinding
+		a.ActionCode = "no_hits"
 		a.Action = "Keine Treffer. Das beweist nicht, dass der Wert sicher ist"
 		if len(weak) == 1 {
+			a.ActionCode = "weak_signal"
 			a.Action = "Nur ein schwacher Hinweis, im Zweifel manuell prüfen"
 		}
 	}

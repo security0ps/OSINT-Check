@@ -109,12 +109,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.Set("Strict-Transport-Security", "max-age=31536000")
 	}
 	if !s.opt.Team && !isLoopbackHost(r.Host) { // Schutz vor DNS-Rebinding
-		writeError(w, http.StatusForbidden, "Zugriff nur über localhost erlaubt")
+		writeError(w, http.StatusForbidden, "localhost_only", "Zugriff nur über localhost erlaubt")
 		return
 	}
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		if !sameOrigin(r) {
-			writeError(w, http.StatusForbidden, "Anfrage von fremder Seite abgelehnt")
+			writeError(w, http.StatusForbidden, "cross_site", "Anfrage von fremder Seite abgelehnt")
 			return
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, maxBody)
@@ -153,21 +153,21 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func writeError(w http.ResponseWriter, code int, msg string) {
-	writeJSON(w, code, map[string]string{"error": msg})
+func writeError(w http.ResponseWriter, code int, key, msg string) {
+	writeJSON(w, code, map[string]string{"error": msg, "error_code": key})
 }
 
 func readJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
-		writeError(w, http.StatusUnsupportedMediaType, "JSON erwartet")
+		writeError(w, http.StatusUnsupportedMediaType, "json_required", "JSON erwartet")
 		return false
 	}
 	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
 		var tooBig *http.MaxBytesError
 		if errors.As(err, &tooBig) {
-			writeError(w, http.StatusRequestEntityTooLarge, "Eingabe ist zu groß")
+			writeError(w, http.StatusRequestEntityTooLarge, "input_too_large", "Eingabe ist zu groß")
 		} else {
-			writeError(w, http.StatusBadRequest, "Ungültige Anfrage")
+			writeError(w, http.StatusBadRequest, "invalid_request", "Ungültige Anfrage")
 		}
 		return false
 	}
@@ -197,7 +197,7 @@ func (s *Server) authed(r *http.Request) bool {
 func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !s.authed(r) {
-			writeError(w, http.StatusUnauthorized, "Anmeldung erforderlich")
+			writeError(w, http.StatusUnauthorized, "login_required", "Anmeldung erforderlich")
 			return
 		}
 		next(w, r)
@@ -319,7 +319,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	dev := s.knownDevice(r)
 	if s.throttled(ip, dev) {
 		log.Printf("Anmeldung gesperrt: %s", ip)
-		writeError(w, http.StatusTooManyRequests, "Zu viele Fehlversuche, bitte eine Minute warten")
+		writeError(w, http.StatusTooManyRequests, "login_throttled", "Zu viele Fehlversuche, bitte eine Minute warten")
 		return
 	}
 	var body struct {
@@ -332,12 +332,12 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if subtle.ConstantTimeCompare(a[:], b[:]) != 1 {
 		s.recordFailure(ip, dev)
 		log.Printf("Anmeldung fehlgeschlagen: %s", ip)
-		writeError(w, http.StatusUnauthorized, "Passwort ist falsch")
+		writeError(w, http.StatusUnauthorized, "wrong_password", "Passwort ist falsch")
 		return
 	}
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
-		writeError(w, 500, "Interner Fehler")
+		writeError(w, 500, "internal_error", "Interner Fehler")
 		return
 	}
 	token := hex.EncodeToString(raw)
@@ -420,7 +420,7 @@ func (s *Server) handleCheck(w http.ResponseWriter, r *http.Request) {
 	}
 	job, err := s.eng.Submit(body.Input, body.Fresh)
 	if err != nil {
-		writeError(w, http.StatusTooManyRequests, err.Error())
+		writeError(w, http.StatusTooManyRequests, "busy", err.Error())
 		return
 	}
 	view := job.View()
@@ -431,7 +431,7 @@ func (s *Server) handleCheck(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleJob(w http.ResponseWriter, r *http.Request) {
 	job := s.eng.Job(r.PathValue("id"))
 	if job == nil {
-		writeError(w, http.StatusNotFound, "Prüfung nicht gefunden, vermutlich wurde der Dienst neu gestartet")
+		writeError(w, http.StatusNotFound, "job_expired", "Prüfung nicht gefunden, vermutlich wurde der Dienst neu gestartet")
 		return
 	}
 	writeJSON(w, 200, job.View())
@@ -440,7 +440,7 @@ func (s *Server) handleJob(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 	job := s.eng.Job(r.PathValue("id"))
 	if job == nil {
-		writeError(w, http.StatusNotFound, "Prüfung nicht gefunden")
+		writeError(w, http.StatusNotFound, "job_missing", "Prüfung nicht gefunden")
 		return
 	}
 	job.Cancel()
@@ -449,7 +449,7 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	if s.opt.Team || s.opt.Demo {
-		writeError(w, http.StatusForbidden, "Einstellungen werden im Serverbetrieb über die Konfiguration gesetzt")
+		writeError(w, http.StatusForbidden, "settings_managed", "Einstellungen werden im Serverbetrieb über die Konfiguration gesetzt")
 		return
 	}
 	var body struct {
@@ -462,13 +462,13 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	known := config.KeyNames()
 	for k, v := range body.Keys {
 		if !known[k] {
-			writeError(w, http.StatusBadRequest, "Unbekannter Key-Name")
+			writeError(w, http.StatusBadRequest, "unknown_key", "Unbekannter Key-Name")
 			return
 		}
 		body.Keys[k] = strings.TrimSpace(v)
 	}
 	if err := s.cfg.Update(body.Keys, body.InternalDomains); err != nil {
-		writeError(w, 500, "Einstellungen konnten nicht gespeichert werden")
+		writeError(w, 500, "save_failed", "Einstellungen konnten nicht gespeichert werden")
 		return
 	}
 	for k, v := range body.Keys {

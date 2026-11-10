@@ -14,9 +14,9 @@ h1, h2, h3, p { margin: 0; }
 h1 { font-size: 18px; font-weight: 600; }
 h2 { font-size: 16px; font-weight: 600; }
 
-.topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 20px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.topbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 20px; background: var(--panel); border-bottom: 1px solid var(--line); }
 .brand { font-weight: 650; display: flex; align-items: center; gap: 8px; }
-.topbar-actions { display: flex; gap: 6px; }
+.topbar-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { font-size: 12px; font-weight: 500; color: var(--muted); background: var(--panel-2); border-radius: 4px; padding: 1px 7px; }
 .banner { background: var(--sus-bg); color: var(--sus); padding: 8px 20px; font-size: 14px; border-bottom: 1px solid var(--line); }
 
