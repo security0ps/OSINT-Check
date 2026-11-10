@@ -89,6 +89,9 @@ type Engine struct {
 	cache   map[string]cacheEntry
 	jobs    map[string]*Job
 	parse   ioc.Options
+	// admitting zählt Aufträge, die einen Platz reserviert haben und gerade
+	// außerhalb der Sperre zerlegt werden.
+	admitting int
 }
 
 type cacheEntry struct {
@@ -151,13 +154,17 @@ func (e *Engine) Submit(input string, fresh bool) (*Job, error) {
 		}
 		j.mu.Unlock()
 	}
-	if active >= maxActiveJobs {
+	if active+e.admitting >= maxActiveJobs {
 		e.mu.Unlock()
 		return nil, ErrBusy
 	}
-	e.evictFinished()
-	parsed := ioc.Parse(input, e.parse)
+	e.admitting++
+	opts := e.parse
+	opts.InternalDomains = append([]string(nil), e.parse.InternalDomains...)
 	e.mu.Unlock()
+	// Zerlegen ohne die Engine-Sperre: Eingaben eines Mitglieds dürfen Abfragen
+	// anderer Mitglieder nicht blockieren.
+	parsed := ioc.Parse(input, opts)
 	cfgs := e.Sources()
 
 	ctx, cancel := context.WithTimeout(context.Background(), jobMaxAge)
@@ -188,6 +195,8 @@ func (e *Engine) Submit(input string, fresh bool) (*Job, error) {
 	}
 
 	e.mu.Lock()
+	e.admitting--
+	e.evictFinished()
 	e.jobs[job.ID] = job
 	e.mu.Unlock()
 

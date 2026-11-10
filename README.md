@@ -107,6 +107,7 @@ export OSINT_PASSWORD
 
 - Der Dienst startet nur mit gesetztem Passwort und im Netz nur mit TLS oder `--trust-proxy`. Das Passwort ist frei wählbar.
 - Alle teilen sich ein Team-Passwort. Es gibt keine einzelnen Konten und kein Protokoll, wer was geprüft hat.
+- Anmeldebremse: 5 Fehlversuche pro Minute je IP und 30 insgesamt. Browser, die sich schon einmal erfolgreich angemeldet haben, bekommen ein Geräte-Cookie und zählen nur gegen ihr eigenes Limit, Angriffe von außen sperren das Team also nicht aus. Nach einem Neustart des Dienstes gelten alle Browser wieder als neu.
 - API-Keys liegen nur auf dem Server und erscheinen nie in der Oberfläche.
 - Limits und Zwischenspeicher gelten für das ganze Team.
 

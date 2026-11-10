@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 type Type string
@@ -105,9 +106,13 @@ func Parse(input string, opt Options) ParseResult {
 	for _, tok := range tokenize(input) {
 		ind, ok := Classify(tok, opt)
 		if !ok {
-			if !seenUnknown[tok] && len(res.Unknown) < 50 {
-				seenUnknown[tok] = true
-				res.Unknown = append(res.Unknown, truncate(tok, 120))
+			if len(res.Unknown) < 50 {
+				t := truncate(tok, 120)
+				if !seenUnknown[t] {
+					seenUnknown[t] = true
+					// Kopie, damit gespeicherte Aufträge nicht die ganze Eingabe festhalten.
+					res.Unknown = append(res.Unknown, strings.Clone(t))
+				}
 			}
 			continue
 		}
@@ -120,6 +125,8 @@ func Parse(input string, opt Options) ParseResult {
 			res.Truncated++
 			continue
 		}
+		// Kopien, damit gespeicherte Aufträge nicht die ganze Eingabe festhalten.
+		ind.Value, ind.Defanged, ind.Host = strings.Clone(ind.Value), strings.Clone(ind.Defanged), strings.Clone(ind.Host)
 		res.Indicators = append(res.Indicators, ind)
 	}
 	return res
@@ -304,9 +311,22 @@ func containsAny(s string, needles []string) bool {
 	return false
 }
 
+// hostToASCII ist austauschbar, damit Tests die Punycode-Aufrufe zählen können.
+var hostToASCII = toASCII
+
 func normHost(host string) (string, bool) {
 	h := strings.TrimSuffix(strings.ToLower(host), ".")
-	ascii, err := toASCII(h)
+	// DNS erlaubt höchstens 253 Zeichen und 63 je Label. Vor der Punycode-
+	// Kodierung prüfen, deren Aufwand quadratisch mit der Labellänge wächst.
+	if utf8.RuneCountInString(h) > 253 {
+		return "", false
+	}
+	for _, label := range strings.Split(h, ".") {
+		if utf8.RuneCountInString(label) > 63 {
+			return "", false
+		}
+	}
+	ascii, err := hostToASCII(h)
 	if err != nil || len(ascii) > 253 || !reDomain.MatchString(ascii) {
 		return "", false
 	}

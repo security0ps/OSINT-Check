@@ -27,7 +27,7 @@ import (
 	"osint-check/internal/sources"
 )
 
-var version = "1.2.3"
+var version = "1.2.4"
 
 func main() {
 	trustProxy := flag.Bool("trust-proxy", false, "Dienst läuft hinter eigenem Reverse Proxy, der HTTPS beendet")

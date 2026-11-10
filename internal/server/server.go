@@ -2,6 +2,7 @@
 package server
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -36,6 +37,13 @@ const (
 	// Bremst auch verteilte Angriffe, ohne bei einzelnen Tippfehlern alle auszusperren.
 	loginAttemptsGlobal = 30
 	maxTrackedIPs       = 10000
+	// Ein Gerät, das sich schon einmal erfolgreich angemeldet hat, erhält ein
+	// signiertes Cookie. Es zählt nur gegen sein eigenes Fehlerkontingent, nicht
+	// gegen die globale Grenze. So können verteilte Fehlversuche Unbekannter
+	// das Team nicht aussperren, die globale Grenze für Unbekannte bleibt aber.
+	deviceCookie = "osint_device"
+	deviceTTL    = 90 * 24 * time.Hour
+	maxDevices   = 10000
 )
 
 // Options beschreibt den Betriebsmodus.
@@ -57,12 +65,20 @@ type Server struct {
 	mu   sync.Mutex
 	sess map[string]time.Time
 	fail map[string][]time.Time
-	all  []time.Time // alle Fehlversuche
+	all  []time.Time // Fehlversuche unbekannter Geräte
+	// devKey signiert Geräte-Cookies. Er lebt nur im Speicher, nach einem
+	// Neustart gelten Geräte wieder als unbekannt.
+	devKey  []byte
+	devFail map[string][]time.Time
 }
 
 // New baut den Server.
 func New(eng *engine.Engine, cfg *config.Config, opt Options) *Server {
-	s := &Server{eng: eng, cfg: cfg, opt: opt, mux: http.NewServeMux(), sess: map[string]time.Time{}, fail: map[string][]time.Time{}}
+	s := &Server{eng: eng, cfg: cfg, opt: opt, mux: http.NewServeMux(), sess: map[string]time.Time{}, fail: map[string][]time.Time{},
+		devKey: make([]byte, 32), devFail: map[string][]time.Time{}}
+	if _, err := rand.Read(s.devKey); err != nil {
+		panic(err)
+	}
 	static, err := fs.Sub(webFS, "web")
 	if err != nil {
 		panic(err)
@@ -219,10 +235,41 @@ func recentOnly(list []time.Time, cut time.Time) []time.Time {
 	return kept
 }
 
-func (s *Server) throttled(ip string) bool {
+func (s *Server) deviceMAC(id string) string {
+	m := hmac.New(sha256.New, s.devKey)
+	m.Write([]byte(id))
+	return hex.EncodeToString(m.Sum(nil))
+}
+
+// knownDevice liefert die Geräte-ID, wenn der Request ein von diesem Prozess
+// ausgestelltes Geräte-Cookie trägt, sonst "".
+func (s *Server) knownDevice(r *http.Request) string {
+	c, err := r.Cookie(deviceCookie)
+	if err != nil {
+		return ""
+	}
+	id, mac, ok := strings.Cut(c.Value, ".")
+	if !ok || len(id) != 32 || !hmac.Equal([]byte(mac), []byte(s.deviceMAC(id))) {
+		return ""
+	}
+	return id
+}
+
+// throttled prüft das passende Kontingent: bekannte Geräte nur ihr eigenes,
+// unbekannte die Grenze pro IP und die globale Grenze.
+func (s *Server) throttled(ip, dev string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	cut := time.Now().Add(-loginWindow)
+	if dev != "" {
+		d := recentOnly(s.devFail[dev], cut)
+		if len(d) == 0 {
+			delete(s.devFail, dev)
+		} else {
+			s.devFail[dev] = d
+		}
+		return len(d) >= loginAttempts
+	}
 	s.all = recentOnly(s.all, cut)
 	recent := recentOnly(s.fail[ip], cut)
 	if len(recent) == 0 {
@@ -233,15 +280,34 @@ func (s *Server) throttled(ip string) bool {
 	return len(recent) >= loginAttempts || len(s.all) >= loginAttemptsGlobal
 }
 
-func (s *Server) recordFailure(ip string) {
+func (s *Server) recordFailure(ip, dev string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if len(s.fail) >= maxTrackedIPs {
-		s.fail = map[string][]time.Time{}
-	}
 	now := time.Now()
+	if dev != "" {
+		if len(s.devFail) >= maxDevices {
+			pruneStale(s.devFail, now.Add(-loginWindow))
+		}
+		s.devFail[dev] = append(s.devFail[dev], now)
+		return
+	}
+	if len(s.fail) >= maxTrackedIPs {
+		pruneStale(s.fail, now.Add(-loginWindow))
+		if len(s.fail) >= maxTrackedIPs {
+			s.fail = map[string][]time.Time{}
+		}
+	}
 	s.fail[ip] = append(s.fail[ip], now)
 	s.all = append(s.all, now)
+}
+
+// pruneStale entfernt nur abgelaufene Einträge statt alle Sperren zu löschen.
+func pruneStale(m map[string][]time.Time, cut time.Time) {
+	for k, v := range m {
+		if len(v) == 0 || !v[len(v)-1].After(cut) { // Einträge sind zeitlich sortiert
+			delete(m, k)
+		}
+	}
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -250,7 +316,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ip := s.clientIP(r)
-	if s.throttled(ip) {
+	dev := s.knownDevice(r)
+	if s.throttled(ip, dev) {
 		log.Printf("Anmeldung gesperrt: %s", ip)
 		writeError(w, http.StatusTooManyRequests, "Zu viele Fehlversuche, bitte eine Minute warten")
 		return
@@ -263,7 +330,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	a, b := sha256.Sum256([]byte(body.Password)), sha256.Sum256([]byte(s.opt.Password))
 	if subtle.ConstantTimeCompare(a[:], b[:]) != 1 {
-		s.recordFailure(ip)
+		s.recordFailure(ip, dev)
 		log.Printf("Anmeldung fehlgeschlagen: %s", ip)
 		writeError(w, http.StatusUnauthorized, "Passwort ist falsch")
 		return
@@ -282,9 +349,20 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.sess[hashToken(token)] = now.Add(sessionTTL)
+	if dev != "" {
+		delete(s.devFail, dev)
+	}
 	s.mu.Unlock()
 	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: token, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode,
 		Secure: s.secure(r), MaxAge: int(sessionTTL.Seconds())})
+	if dev == "" {
+		id := make([]byte, 16)
+		if _, err := rand.Read(id); err == nil {
+			v := hex.EncodeToString(id)
+			http.SetCookie(w, &http.Cookie{Name: deviceCookie, Value: v + "." + s.deviceMAC(v), Path: "/api/login", HttpOnly: true,
+				SameSite: http.SameSiteStrictMode, Secure: s.secure(r), MaxAge: int(deviceTTL.Seconds())})
+		}
+	}
 	log.Printf("Anmeldung erfolgreich: %s", ip)
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
