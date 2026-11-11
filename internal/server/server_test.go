@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"osint-check/internal/engine"
 	"osint-check/internal/ioc"
@@ -45,13 +46,23 @@ func req(h http.Handler, method, target, host, body string, mod func(*http.Reque
 
 const local = "127.0.0.1:8484"
 
+func authenticatedRequest(s *Server, method, path, host, body string, mod func(*http.Request)) *httptest.ResponseRecorder {
+	s.mu.Lock()
+	s.sess[hashToken("fixture-session")] = time.Now().Add(time.Hour)
+	s.mu.Unlock()
+	return req(s, method, path, host, body, func(r *http.Request) {
+		r.AddCookie(&http.Cookie{Name: sessionCookie, Value: "fixture-session"})
+		if mod != nil { mod(r) }
+	})
+}
+
 func TestCrossOriginPostRejected(t *testing.T) {
 	s := build(t, Options{})
-	w := req(s, "POST", "/api/check", local, `{"input":"8.8.8.8"}`, func(r *http.Request) { r.Header.Set("Origin", "https://evil.example") })
+	w := authenticatedRequest(s, "POST", "/api/check", local, `{"input":"8.8.8.8"}`, func(r *http.Request) { r.Header.Set("Origin", "https://evil.example") })
 	if w.Code != 403 {
 		t.Fatal(w.Code)
 	}
-	w = req(s, "POST", "/api/check", local, `{"input":"8.8.8.8"}`, func(r *http.Request) { r.Header.Set("Origin", "http://"+local) })
+	w = authenticatedRequest(s, "POST", "/api/check", local, `{"input":"8.8.8.8"}`, func(r *http.Request) { r.Header.Set("Origin", "http://"+local) })
 	if w.Code != 202 {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -59,7 +70,7 @@ func TestCrossOriginPostRejected(t *testing.T) {
 
 func TestFormPostRejected(t *testing.T) {
 	s := build(t, Options{})
-	w := req(s, "POST", "/api/check", local, `input=8.8.8.8`, func(r *http.Request) { r.Header.Set("Content-Type", "text/plain") })
+	w := authenticatedRequest(s, "POST", "/api/check", local, `input=8.8.8.8`, func(r *http.Request) { r.Header.Set("Content-Type", "text/plain") })
 	if w.Code != 415 {
 		t.Fatal(w.Code)
 	}
@@ -125,14 +136,14 @@ func TestLoginThrottle(t *testing.T) {
 func TestOversizedBody(t *testing.T) {
 	s := build(t, Options{})
 	big := `{"input":"` + strings.Repeat("a", 2<<20) + `"}`
-	if w := req(s, "POST", "/api/check", local, big, nil); w.Code != 413 {
+	if w := authenticatedRequest(s, "POST", "/api/check", local, big, nil); w.Code != 413 {
 		t.Fatal(w.Code)
 	}
 }
 
 func TestJobUnknownID(t *testing.T) {
 	s := build(t, Options{})
-	if w := req(s, "GET", "/api/jobs/nix", local, "", nil); w.Code != 404 {
+	if w := authenticatedRequest(s, "GET", "/api/jobs/nix", local, "", nil); w.Code != 404 {
 		t.Fatal(w.Code)
 	}
 }

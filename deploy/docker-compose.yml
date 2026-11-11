@@ -13,6 +13,7 @@ services:
     expose: ["8484"]
     volumes:
       - ./config:/config:ro
+      - app_data:/data
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8484/healthz"]
       interval: 30s
@@ -41,5 +42,6 @@ services:
       - caddy_config:/config
     logging: *logging
 volumes:
+  app_data:
   caddy_data:
   caddy_config:

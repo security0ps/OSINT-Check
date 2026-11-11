@@ -67,10 +67,17 @@
 
   <section id="login" class="login" hidden>
     <form id="loginForm" class="panel">
-      <h1><span data-en="Sign in">Anmelden</span></h1>
+      <h1 id="loginTitle"><span data-en="Sign in">Anmelden</span></h1>
+      <div id="setupFields" hidden>
+        <h1><span data-en="Set your team password">Team-Passwort festlegen</span></h1>
+        <p><span data-en="Read the one-time code on the Docker host:">Einmalcode auf dem Docker-Host abrufen:</span> <code>docker compose exec app cat /data/setup-code</code></p>
+        <label for="setupCode"><span data-en="Setup code">Einrichtungscode</span></label>
+        <input id="setupCode" type="password" autocomplete="off">
+        <p><span data-en="Use at least 12 characters for the password.">Verwende mindestens 12 Zeichen für das Passwort.</span></p>
+      </div>
       <label for="password"><span data-en="Team password">Team-Passwort</span></label>
       <input id="password" type="password" autocomplete="current-password" required>
-      <button class="btn primary" type="submit"><span data-en="Sign in">Anmelden</span></button>
+      <button class="btn primary" type="submit"><span id="signInLabel" data-en="Sign in">Anmelden</span><span id="setupLabel" data-en="Set password" hidden>Passwort festlegen</span></button>
       <p id="loginError" class="error" role="alert" hidden></p>
     </form>
   </section>
@@ -82,7 +89,7 @@
     </form>
     <p id="licenseNote" class="note"><span data-en="Most services restrict commercial use of their free plans. Check their terms before using this tool at work.">Die Gratis-Zugänge der meisten Dienste sind nicht für kommerzielle Nutzung gedacht. Prüfe die Bedingungen, bevor du das Tool im Unternehmen einsetzt.</span></p>
     <div id="sourcesList"></div>
-    <p class="hint small"><span data-en="In team mode, API keys are managed on the server.">Keys werden im Team-Betrieb auf dem Server verwaltet.</span></p>
+    <p id="keyStatus" role="status"></p>
   </dialog>
 
   <script src="sha256.js"></script>

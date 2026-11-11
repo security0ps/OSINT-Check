@@ -63,7 +63,18 @@
     const needLogin = meta.auth_required && !meta.authenticated;
     $('login').hidden = !needLogin;
     $('app').hidden = needLogin;
-    if (needLogin) { $('password').focus(); return; }
+    if (needLogin) {
+      const setup = !!meta.setup_required;
+      $('setupFields').hidden = !setup;
+      $('setupLabel').hidden = !setup;
+      $('loginTitle').hidden = setup;
+      $('signInLabel').hidden = setup;
+      $('setupCode').required = setup;
+      $('password').autocomplete = setup ? 'new-password' : 'current-password';
+      $('password').minLength = setup ? 12 : 0;
+      $(setup ? 'setupCode' : 'password').focus();
+      return;
+    }
     applyMeta();
     $('input').focus();
   }
@@ -406,6 +417,7 @@
   function renderSources() {
     const box = $('sourcesList');
     box.replaceChildren();
+    const shown = new Set();
     meta.sources.forEach((s) => {
       const row = el('div', 'source-row');
       const top = el('div', 'source-top');
@@ -422,6 +434,38 @@
         const a = el('a', 'small', s.key_name ? t('API-Key holen', 'Get API key') : 'Website');
         a.href = s.signup; a.target = '_blank'; a.rel = 'noopener noreferrer';
         row.append(a);
+      }
+      if (meta.editable && s.key_name && !shown.has(s.key_name)) {
+        shown.add(s.key_name);
+        const names = meta.sources.filter(src => src.key_name === s.key_name).map(src => src.name).join(', ');
+        const form = el('form');
+        const input = el('input');
+        input.type = 'password';
+        input.required = true;
+        input.maxLength = 4096;
+        input.autocomplete = 'off';
+        const caption = el('label', '', t('Neuer API-Key für ', 'New API key for ') + names);
+        caption.append(input);
+        const save = el('button', 'btn', t('Speichern', 'Save'));
+        form.append(caption, save);
+        form.addEventListener('submit', async event => {
+          event.preventDefault();
+          save.disabled = true;
+          try {
+            await api('key', 'PUT', { name: s.key_name, value: input.value });
+            input.value = '';
+            meta = await api('meta');
+            applyMeta();
+            renderSources();
+            $('keyStatus').textContent = names + t(': gespeichert', ': saved');
+          } catch (error) {
+            if (error.status === 401) { location.reload(); return; }
+            $('keyStatus').textContent = message(error.message, error.code);
+          } finally {
+            save.disabled = false;
+          }
+        });
+        row.append(form);
       }
       box.append(row);
     });
@@ -522,6 +566,11 @@
   $('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
+      if (meta.setup_required) {
+        await api('setup', 'POST', { code: $('setupCode').value.trim(), password: $('password').value });
+        meta.setup_required = false;
+        $('setupCode').value = '';
+      }
       await api('login', 'POST', { password: $('password').value });
       location.reload();
     } catch (err) {

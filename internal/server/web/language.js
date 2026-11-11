@@ -103,6 +103,9 @@ const language = (() => {
     "Zuletzt aktiv": "Last active"
   };
   const codes = {
+    "setup_closed": "Setup is closed",
+    "setup_denied": "Invalid or already used setup code",
+    "password_length": "Use at least 12 characters and at most 1024 bytes",
     "internal": "Internal indicator. It was never sent to external services",
     "investigate": "Consider blocking and investigate the incident",
     "verify_source": "Consider blocking and verify with a second source",

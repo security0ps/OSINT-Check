@@ -44,13 +44,19 @@ Voraussetzung ist Docker mit Compose. Die Konfiguration liegt in `deploy/`.
 ```bash
 cd deploy
 cp -i .env.example .env
-chmod 600 .env                    # danach Hostname, Passwort und Keys eintragen
+chmod 600 .env                    # danach SITE_ADDRESS eintragen
 mkdir -p config
 cp -i config.example.json config/config.json   # eigene Domains eintragen
 chmod 644 config/config.json      # enthält keine Geheimnisse, der Dienst läuft ohne Root
 docker compose up -d --build
-docker compose logs -f app
+docker compose exec app cat /data/setup-code
 ```
+
+Öffne die konfigurierte HTTPS-Adresse. Gib bei der ersten Einrichtung den Code aus dem letzten Befehl ein und lege ein Team-Passwort mit mindestens 12 Zeichen fest. Der Code gilt einmal und wird bei einem Neustart vor der Einrichtung erneuert. Wenn bereits ein Passwort über die Umgebung oder Konfiguration gesetzt ist, entfällt der Code und du kannst dich direkt anmelden.
+
+Unter **Quellen** kannst du nach der Anmeldung API-Keys hinzufügen oder ersetzen. Das gilt für alle Personen mit Team-Passwort. Ein gespeicherter Key gilt sofort für neue Prüfungen und hat Vorrang vor dem konfigurierten Key desselben Dienstes. Die drei abuse.ch-Quellen teilen sich einen Key.
+
+Das Volume `app_data` enthält den gesalzenen Passwort-Hash und die API-Keys. Keys werden für Abfragen im Klartext benötigt. Schütze das Volume und seine Backups wie deine `.env`. Beim Austausch des Containers wird das Volume weiterverwendet. `docker compose down -v` löscht die Volumes einschließlich der Zugangsdaten.
 
 **Vor dem Start:**
 
@@ -69,7 +75,7 @@ docker compose logs -f app
 
 **Im Serverbetrieb gilt:**
 
-- Der Dienst startet nur mit gesetztem Passwort und mit `--trust-proxy` hinter dem HTTPS-Proxy. Das Passwort ist frei wählbar.
+- Vor der Einrichtung sind Quellen und Prüfungen gesperrt. Ein gesetztes `OSINT_PASSWORD` hat Vorrang vor dem gespeicherten Passwort.
 - Alle teilen sich ein Team-Passwort. Es gibt keine einzelnen Konten und kein Protokoll, wer was geprüft hat.
 - Anmeldebremse: 5 Fehlversuche pro Minute je IP und 30 insgesamt. Browser, die sich schon einmal erfolgreich angemeldet haben, bekommen ein Geräte-Cookie und zählen nur gegen ihr eigenes Limit, Angriffe von außen sperren das Team also nicht aus. Nach einem Neustart des Dienstes gelten alle Browser wieder als neu.
 - API-Keys liegen nur auf dem Server und erscheinen nie in der Oberfläche.

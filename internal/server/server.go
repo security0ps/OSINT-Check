@@ -5,7 +5,6 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
 	"embed"
 	"encoding/hex"
 	"encoding/json"
@@ -47,6 +46,7 @@ const (
 
 // Options beschreibt den Betriebsmodus.
 type Options struct {
+	Credentials *Credentials
 	Password string
 	// TrustProxy wertet X-Forwarded-* aus. Nur setzen, wenn der Dienst
 	// ausschließlich über einen eigenen Reverse Proxy erreichbar ist.
@@ -83,6 +83,8 @@ func New(eng *engine.Engine, opt Options) *Server {
 	s.mux.Handle("GET /", http.FileServerFS(static))
 	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { writeJSON(w, 200, map[string]string{"status": "ok"}) })
 	s.mux.HandleFunc("GET /api/meta", s.handleMeta)
+	s.mux.HandleFunc("POST /api/setup", s.handleSetup)
+	s.mux.HandleFunc("PUT /api/key", s.auth(s.handleKey))
 	s.mux.HandleFunc("POST /api/login", s.handleLogin)
 	s.mux.HandleFunc("POST /api/logout", s.handleLogout)
 	s.mux.HandleFunc("POST /api/check", s.auth(s.handleCheck))
@@ -157,9 +159,6 @@ func readJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 // --- Anmeldung ----------------------------------------------------------
 
 func (s *Server) authed(r *http.Request) bool {
-	if s.opt.Password == "" {
-		return true
-	}
 	c, err := r.Cookie(sessionCookie)
 	if err != nil {
 		return false
@@ -291,10 +290,6 @@ func pruneStale(m map[string][]time.Time, cut time.Time) {
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	if s.opt.Password == "" {
-		writeJSON(w, 200, map[string]bool{"ok": true})
-		return
-	}
 	ip := s.clientIP(r)
 	dev := s.knownDevice(r)
 	if s.throttled(ip, dev) {
@@ -308,8 +303,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &body) {
 		return
 	}
-	a, b := sha256.Sum256([]byte(body.Password)), sha256.Sum256([]byte(s.opt.Password))
-	if subtle.ConstantTimeCompare(a[:], b[:]) != 1 {
+	if !s.validPassword(body.Password) {
 		s.recordFailure(ip, dev)
 		log.Printf("Anmeldung fehlgeschlagen: %s", ip)
 		writeError(w, http.StatusUnauthorized, "wrong_password", "Passwort ist falsch")
@@ -372,7 +366,7 @@ type sourceInfo struct {
 }
 
 func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
-	out := map[string]any{"auth_required": s.opt.Password != "", "authenticated": s.authed(r), "demo": false, "team": true, "max_indicators": engine.MaxIndicators}
+	out := map[string]any{"auth_required": true, "setup_required": s.setupRequired(), "authenticated": s.authed(r), "demo": false, "team": true, "max_indicators": engine.MaxIndicators}
 	if s.authed(r) {
 		list := []sourceInfo{}
 		for _, c := range s.eng.Sources() {
@@ -381,7 +375,7 @@ func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 				UsedToday: c.Limiter.UsedToday(), License: c.Source.License, Signup: c.Source.Signup})
 		}
 		out["sources"] = list
-		out["editable"] = false
+		out["editable"] = s.opt.Credentials != nil
 		out["internal_domains"] = s.eng.InternalDomains()
 	}
 	writeJSON(w, 200, out)

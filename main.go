@@ -41,9 +41,12 @@ func run(trustProxy bool) error {
 	if err != nil {
 		return err
 	}
-	if !trustProxy || cfg.Password == "" {
-		return errors.New("Team-Passwort und HTTPS-Proxy (--trust-proxy) erforderlich")
+	if !trustProxy {
+		return errors.New("HTTPS-Proxy (--trust-proxy) erforderlich")
 	}
+	credentials, err := server.OpenCredentials("/data", cfg.Password)
+	if err != nil { return err }
+	credentials.ApplyKeys(cfg.Keys)
 	listener, err := net.Listen("tcp", ":8484")
 	if err != nil {
 		return err
@@ -62,7 +65,7 @@ func run(trustProxy bool) error {
 		cfgs = append(cfgs, &engine.SourceConfig{Source: src, Key: key, Limiter: engine.NewLimiter(src.Limit)})
 	}
 	eng := engine.New(sources.NewClient(nil), cfgs, ioc.Options{InternalDomains: cfg.InternalDomains})
-	handler := server.New(eng, server.Options{Password: cfg.Password, TrustProxy: trustProxy})
+	handler := server.New(eng, server.Options{Credentials: credentials, Password: cfg.Password, TrustProxy: trustProxy})
 
 	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 120 * time.Second}
 	log.Printf("OSINT-Check %s läuft auf Port 8484", version)
