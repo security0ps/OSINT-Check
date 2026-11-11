@@ -85,11 +85,6 @@ func demoResponse(r *http.Request, body string) (int, string) {
 		return 404, `{}`
 	case "hashlookup.circl.lu":
 		return 404, `{}`
-	case "www.spamhaus.org":
-		if strings.HasSuffix(r.URL.Path, "drop_v6.json") {
-			return 200, "{\"cidr\":\"2001:db8:bad::/48\",\"sblid\":\"SBL000002\",\"rir\":\"demo\"}\n{\"type\":\"metadata\",\"records\":1}\n"
-		}
-		return 200, "{\"cidr\":\"203.0.113.64/26\",\"sblid\":\"SBL000001\",\"rir\":\"demo\"}\n{\"type\":\"metadata\",\"records\":1}\n"
 	case "feodotracker.abuse.ch":
 		return 200, `[{"ip_address":"203.0.113.66","port":443,"status":"online","malware":"Demo-Botnet","as_name":"Demo Hosting Ltd","country":"XX","last_online":"2026-11-04"}]`
 	}
