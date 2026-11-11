@@ -209,5 +209,5 @@ func capList(in []string, n int) []string {
 
 // All liefert alle bekannten Quellen in Anzeigereihenfolge.
 func All() []*Source {
-	return []*Source{virusTotal(), abuseIPDB(), urlscan(), urlhaus(), malwareBazaar(), threatFox(), otx(), circl(), newFeodo()}
+	return []*Source{virusTotal(), abuseIPDB(), urlscan(), urlhaus(), malwareBazaar(), threatFox(), otx(), circl(), newFeodo(), newSpamhausDrop()}
 }

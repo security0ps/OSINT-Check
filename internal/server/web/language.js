@@ -100,7 +100,15 @@ const language = (() => {
     "Malware-Familien": "Malware families",
     "Beispiel-Pulse": "Example pulse",
     "Quellen": "Sources",
-    "Zuletzt aktiv": "Last active"
+    "Zuletzt aktiv": "Last active",
+    "Kostenlos, auch für Firmen; Download höchstens stündlich": "Free, including for companies; download at most once per hour",
+    "Netz auf der Spamhaus-DROP-Liste (von Kriminellen kontrolliert)": "Network on the Spamhaus DROP list (controlled by criminals)",
+    "Nicht auf der Spamhaus-DROP-Liste": "Not on the Spamhaus DROP list",
+    "Netzbereich": "Network range",
+    "SBL-Eintrag": "SBL record",
+    "Antwort hat ein unerwartetes Format": "Unexpected response format",
+    "Antwort enthält einen ungültigen Netzbereich": "Response contains an invalid network range",
+    "Liste ist leer": "List is empty"
   };
   const codes = {
     "internal": "Internal indicator. It was never sent to external services",
@@ -155,6 +163,7 @@ const language = (() => {
       ['Achtung: ', 'Warning: '],
       ['Als Malware-URL gelistet, Status: ', 'Listed as a malware URL, status: '],
       ['Feodo-Liste konnte nicht aktualisiert werden: ', 'Could not update the Feodo list: '],
+      ['Spamhaus-DROP-Liste konnte nicht geladen werden: ', 'Could not load the Spamhaus DROP list: '],
     ];
     for (const [de, en] of prefixes) {
       if (value.startsWith(de)) return en + message(value.slice(de.length));

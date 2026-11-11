@@ -14,6 +14,7 @@ Warteschlange je Dienst (Limits, Zwischenspeicher 1 h)
         ▼
 VirusTotal · AbuseIPDB · urlscan.io · URLhaus · MalwareBazaar
 ThreatFox · AlienVault OTX · CIRCL hashlookup · Feodo Tracker
+Spamhaus DROP
         │
         ▼
 Regelbewertung · Details je Quelle · Export (CSV, JSON, Bericht)
@@ -61,6 +62,7 @@ Vor dem Einsatz im Unternehmen unbedingt prüfen. Stand der Angaben: November 20
 | AlienVault OTX | ja | keine festen Angaben gefunden | Laut EULA kostenlos für nicht-kommerzielle Nutzung |
 | CIRCL hashlookup | nein | keine festen Angaben gefunden | Bedingungen vor Einsatz prüfen |
 | Feodo Tracker | nein | Download, 1 h zwischengespeichert | CC0, frei nutzbar |
+| Spamhaus DROP | nein | Download, 12 h zwischengespeichert | Kostenlos für jede Nutzung, auch in Firmen. Automatische Downloads höchstens stündlich |
 
 Das Tool setzt keine Lizenz durch. Bezahlte Limits trägst du unter `limits` in der `config.json` ein, einzelne Dienste schaltest du mit `disabled_sources` ab. Mehrere Gratis-Konten zur Limit-Umgehung sind bei VirusTotal und AbuseIPDB verboten.
 
@@ -174,6 +176,7 @@ Die Dienste von abuse.ch zählen zusammen als eine Stimme. VirusTotal stuft Date
 - Mit 4 Abfragen pro Minute dauern 100 Werte bei VirusTotal rund 25 Minuten. Die Oberfläche muss dabei offen bleiben, verlassene Prüfungen enden nach 3 Minuten.
 - In Firmennetzen bei Bedarf `HTTPS_PROXY` und `NO_PROXY` in der Dienstumgebung setzen.
 - Kann die Feodo-Liste nach Ablauf ihres einstündigen Caches nicht aktualisiert werden, wird die Quelle als Fehler angezeigt. Veraltete Listen werden nicht als aktuelle Prüfung verwendet.
+- Spamhaus DROP enthält nur Netzbereiche, die komplett von Kriminellen kontrolliert werden. Ein Treffer ist ein starkes Signal, kein Treffer heißt aber nicht unauffällig. Die Liste wird höchstens alle 12 h geladen, nach einem Fehler erst nach 15 Minuten erneut. Ausgehend muss `www.spamhaus.org` erreichbar sein.
 
 ## Entwicklung
 
@@ -189,5 +192,6 @@ Standardbibliothek. Für Releases eine aktuell unterstützte Go-Version verwende
 Die Mindestversion in `go.mod` ist keine Empfehlung für den produktiven Betrieb.
 Weitere Dienste werden in `internal/sources` als `Source` ergänzt.
 
+Version 1.3.0 ergänzt Spamhaus DROP für IPv4 und IPv6. Version 1.2.4 behebt die Befunde aus dem Sicherheitsaudit.
 Version 1.2.3 korrigiert Kontingentverbrauch nach Abbruch, die Gewichtung gleicher
 Quellengruppen, die Behandlung abschließender URL-Zeichen und den Feodo-Fehlerfall.
