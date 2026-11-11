@@ -1,6 +1,7 @@
 # OSINT-Check
 
 Prüft URLs, Hashes, IPs, Domains und lokale Dateien parallel bei mehreren Threat-Intelligence-Diensten. Die Weboberfläche läuft mit Docker Compose hinter Caddy.
+<img width="1512" height="853" alt="image" src="https://github.com/user-attachments/assets/88fd7273-49cc-43c3-974a-72c01bfa19a5" />
 
 ```text
 Eingabe (Text oder Datei)
