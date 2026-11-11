@@ -20,7 +20,7 @@ import (
 // Sperre der eigenen IP. Deshalb Cache von 12 h und Pause nach Fehlern.
 const (
 	dropTTL   = 12 * time.Hour
-	dropRetry = 15 * time.Minute
+	dropRetry = time.Hour
 )
 
 type dropEntry struct {

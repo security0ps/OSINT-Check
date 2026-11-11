@@ -99,6 +99,44 @@ func TestSpamhausDropBacksOffAfterFailure(t *testing.T) {
 	}
 }
 
+func TestSpamhausDropRetriesPartialDownloadAfterOneHour(t *testing.T) {
+	var hits atomic.Int32
+	var v6Ready atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		switch r.URL.Path {
+		case "/drop_v4.json":
+			io.WriteString(w, dropV4)
+		case "/drop_v6.json":
+			if !v6Ready.Load() {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+			io.WriteString(w, dropV6)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	c := NewClient(nil)
+	c.Bases = map[string]string{"https://www.spamhaus.org/drop": srv.URL}
+	list := &dropList{sem: make(chan struct{}, 1)}
+	ctx := context.Background()
+	if _, err := list.load(ctx, c); err == nil || hits.Load() != 2 {
+		t.Fatalf("Teilabruf: Fehler %v, Anfragen %d", err, hits.Load())
+	}
+
+	v6Ready.Store(true)
+	list.failedAt = time.Now().Add(-59 * time.Minute)
+	if _, err := list.load(ctx, c); err == nil || hits.Load() != 2 {
+		t.Fatalf("vor Ablauf der Stunde: Fehler %v, Anfragen %d", err, hits.Load())
+	}
+	list.failedAt = time.Now().Add(-time.Hour)
+	if entries, err := list.load(ctx, c); err != nil || len(entries) != 3 || hits.Load() != 4 {
+		t.Fatalf("nach Ablauf der Stunde: Fehler %v, Einträge %d, Anfragen %d", err, len(entries), hits.Load())
+	}
+}
+
 // Eine veraltete Liste wird nicht als aktuelle Prüfung ausgegeben.
 func TestSpamhausDropStaleListReportsFailure(t *testing.T) {
 	var status, hits atomic.Int32

@@ -176,7 +176,7 @@ Die Dienste von abuse.ch zählen zusammen als eine Stimme. VirusTotal stuft Date
 - Mit 4 Abfragen pro Minute dauern 100 Werte bei VirusTotal rund 25 Minuten. Die Oberfläche muss dabei offen bleiben, verlassene Prüfungen enden nach 3 Minuten.
 - In Firmennetzen bei Bedarf `HTTPS_PROXY` und `NO_PROXY` in der Dienstumgebung setzen.
 - Kann die Feodo-Liste nach Ablauf ihres einstündigen Caches nicht aktualisiert werden, wird die Quelle als Fehler angezeigt. Veraltete Listen werden nicht als aktuelle Prüfung verwendet.
-- Spamhaus DROP enthält nur Netzbereiche, die komplett von Kriminellen kontrolliert werden. Ein Treffer ist ein starkes Signal, kein Treffer heißt aber nicht unauffällig. Die Liste wird höchstens alle 12 h geladen, nach einem Fehler erst nach 15 Minuten erneut. Ausgehend muss `www.spamhaus.org` erreichbar sein.
+- Spamhaus DROP enthält nur Netzbereiche, die komplett von Kriminellen kontrolliert werden. Ein Treffer ist ein starkes Signal, kein Treffer heißt aber nicht unauffällig. Nach einem erfolgreichen Download werden die Listen 12 Stunden zwischengespeichert. Nach einem Abruffehler wartet der laufende Dienst mindestens eine Stunde bis zum nächsten Versuch. Ausgehend muss `www.spamhaus.org` erreichbar sein.
 
 ## Entwicklung
 
