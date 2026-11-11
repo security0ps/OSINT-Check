@@ -19,35 +19,6 @@ ThreatFox · AlienVault OTX · CIRCL hashlookup · Feodo Tracker
 Regelbewertung · Details je Quelle · Export (CSV, JSON, Bericht)
 ```
 
-## Schnellstart unter Linux
-
-Voraussetzungen: eine aktuell unterstützte Go-Version (mindestens die Version aus
-`go.mod`) und optional `make`. Zum Kompilieren werden keine externen Go-Module benötigt.
-
-```bash
-make build
-./dist/osint-check-linux-amd64 --demo --no-browser
-# Im Browser öffnen: http://127.0.0.1:8484
-```
-
-Auf einem ARM64-Rechner `make build GOARCH=arm64` verwenden und anschließend
-`./dist/osint-check-linux-arm64` starten. Ohne Make:
-
-```bash
-CGO_ENABLED=0 GOOS=linux go build -trimpath -buildvcs=false -o osint-check .
-./osint-check --demo --no-browser
-```
-
-Für echte Prüfungen `--demo` weglassen und unter **Quellen** die API-Keys eintragen.
-Ohne `--no-browser` versucht der lokale Modus, die Oberfläche mit `xdg-open` zu
-öffnen. Auf Servern `--no-browser` beziehungsweise `--server` verwenden.
-Beenden mit Strg+C oder SIGTERM.
-
-Die Konfiguration liegt unter `$XDG_CONFIG_HOME/OSINT-Check/config.json`, sonst
-unter `~/.config/OSINT-Check/config.json`. API-Keys werden dort im Klartext mit
-Dateirechten `0600` gespeichert. Einen anderen Pfad setzt `--config`.
-Der Programmeinstieg ist durch einen Go-Build-Tag auf Linux beschränkt.
-
 ## Lizenzen der Gratis-Zugänge
 
 Vor dem Einsatz im Unternehmen unbedingt prüfen. Stand der Angaben: November 2026.
