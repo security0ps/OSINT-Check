@@ -89,29 +89,6 @@ docker compose logs -f app
 4. Das Tool möglichst nicht offen ins Internet stellen, sondern nur über Firmennetz oder VPN. Die Vorlage für eine IP-Sperre steht im `Caddyfile`.
 5. Unter `internal_domains` alle eigenen Domains eintragen, auch `*.firma.de` und Umlaut-Domains funktionieren.
 
-### Bestehende Docker-Installation aktualisieren
-
-**Sprachwechsel auf einer bestehenden Version 1.2.4 nachrüsten.** Wenn auf dem Server die Version aus `OSINT-Check-1.2.4.zip` läuft, entpacke den aktuellen Stand von `main` in einen separaten Ordner. Kopiere nur diese sechs Dateien an dieselben relativen Pfade im bestehenden Projekt:
-
-| Verzeichnis | Dateien aus dem Update |
-|---|---|
-| `internal/engine/` | `assess.go` |
-| `internal/server/` | `server.go` |
-| `internal/server/web/` | `app.js`, `index.html`, `style.css` ersetzen und `language.js` hinzufügen |
-
-**Deine Serverkonfiguration bleibt im bisherigen `deploy/`-Ordner.** Für dieses Update brauchst du dort keine Datei zu kopieren. Behalte insbesondere `deploy/.env` (Hostname, Passwort, API-Keys), `deploy/config/config.json`, eigene Zertifikate sowie deine angepasste `deploy/Caddyfile` und `deploy/docker-compose.yml`. Die Beispieldateien dienen zur Ersteinrichtung.
-
-Wenn Caddy bereits läuft, führe im **bisherigen** `deploy/`-Ordner aus:
-
-```bash
-docker compose up -d --build --no-deps app
-docker compose ps app
-```
-
-Compose baut die App aus dem lokalen Projektverzeichnis. Kopiere deshalb zuerst die neuen Quellen. Warte, bis `app` als `healthy` angezeigt wird, und lade die Oberfläche neu. Oben rechts erscheint die Sprachauswahl. Bei Problemen zeigt `docker compose logs --tail=50 app` die letzten Meldungen.
-
-Die Liste der sechs Dateien gilt genau für dieses Sprachupdate. Für einen anderen Versionssprung vergleiche zuerst die Änderungen seit deiner installierten Version. Neue Optionen aus `.env.example` oder `config.example.json` bei Bedarf einzeln in deine bestehenden Dateien übernehmen.
-
 **Betrieb:**
 
 - Passwort ändern: `.env` anpassen und `docker compose up -d`. Dabei werden alle abgemeldet.
