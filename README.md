@@ -72,10 +72,10 @@ Empfohlen ist Docker Compose mit Caddy als HTTPS-Proxy. Die Vorlage liegt in `de
 
 ```bash
 cd deploy
-test -e .env || cp .env.example .env
+cp -i .env.example .env
 chmod 600 .env                    # danach Hostname, Passwort und Keys eintragen
 mkdir -p config
-test -e config/config.json || cp config.example.json config/config.json   # eigene Domains eintragen
+cp -i config.example.json config/config.json   # eigene Domains eintragen
 chmod 644 config/config.json      # enthält keine Geheimnisse, der Dienst läuft ohne Root
 docker compose up -d --build
 docker compose logs -f app
