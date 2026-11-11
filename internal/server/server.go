@@ -19,7 +19,6 @@ import (
 	"sync"
 	"time"
 
-	"osint-check/internal/config"
 	"osint-check/internal/engine"
 	"osint-check/internal/ioc"
 	"osint-check/internal/sources"
@@ -48,8 +47,6 @@ const (
 
 // Options beschreibt den Betriebsmodus.
 type Options struct {
-	Team     bool // Serverbetrieb: Keys sind in der Oberfläche nicht änderbar
-	Demo     bool
 	Password string
 	// TrustProxy wertet X-Forwarded-* aus. Nur setzen, wenn der Dienst
 	// ausschließlich über einen eigenen Reverse Proxy erreichbar ist.
@@ -59,7 +56,7 @@ type Options struct {
 // Server ist der HTTP-Handler.
 type Server struct {
 	eng  *engine.Engine
-	cfg  *config.Config
+
 	opt  Options
 	mux  *http.ServeMux
 	mu   sync.Mutex
@@ -73,8 +70,8 @@ type Server struct {
 }
 
 // New baut den Server.
-func New(eng *engine.Engine, cfg *config.Config, opt Options) *Server {
-	s := &Server{eng: eng, cfg: cfg, opt: opt, mux: http.NewServeMux(), sess: map[string]time.Time{}, fail: map[string][]time.Time{},
+func New(eng *engine.Engine, opt Options) *Server {
+	s := &Server{eng: eng, opt: opt, mux: http.NewServeMux(), sess: map[string]time.Time{}, fail: map[string][]time.Time{},
 		devKey: make([]byte, 32), devFail: map[string][]time.Time{}}
 	if _, err := rand.Read(s.devKey); err != nil {
 		panic(err)
@@ -91,7 +88,6 @@ func New(eng *engine.Engine, cfg *config.Config, opt Options) *Server {
 	s.mux.HandleFunc("POST /api/check", s.auth(s.handleCheck))
 	s.mux.HandleFunc("GET /api/jobs/{id}", s.auth(s.handleJob))
 	s.mux.HandleFunc("DELETE /api/jobs/{id}", s.auth(s.handleCancel))
-	s.mux.HandleFunc("PUT /api/settings", s.auth(s.handleSettings))
 	return s
 }
 
@@ -108,10 +104,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if s.secure(r) {
 		h.Set("Strict-Transport-Security", "max-age=31536000")
 	}
-	if !s.opt.Team && !isLoopbackHost(r.Host) { // Schutz vor DNS-Rebinding
-		writeError(w, http.StatusForbidden, "localhost_only", "Zugriff nur über localhost erlaubt")
-		return
-	}
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		if !sameOrigin(r) {
 			writeError(w, http.StatusForbidden, "cross_site", "Anfrage von fremder Seite abgelehnt")
@@ -124,18 +116,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) secure(r *http.Request) bool {
 	return r.TLS != nil || (s.opt.TrustProxy && r.Header.Get("X-Forwarded-Proto") == "https")
-}
-
-func isLoopbackHost(host string) bool {
-	h, _, err := net.SplitHostPort(host)
-	if err != nil {
-		h = strings.Trim(host, "[]")
-	}
-	if h == "localhost" {
-		return true
-	}
-	ip := net.ParseIP(h)
-	return ip != nil && ip.IsLoopback()
 }
 
 func sameOrigin(r *http.Request) bool {
@@ -392,7 +372,7 @@ type sourceInfo struct {
 }
 
 func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
-	out := map[string]any{"auth_required": s.opt.Password != "", "authenticated": s.authed(r), "demo": s.opt.Demo, "team": s.opt.Team, "max_indicators": engine.MaxIndicators}
+	out := map[string]any{"auth_required": s.opt.Password != "", "authenticated": s.authed(r), "demo": false, "team": true, "max_indicators": engine.MaxIndicators}
 	if s.authed(r) {
 		list := []sourceInfo{}
 		for _, c := range s.eng.Sources() {
@@ -401,11 +381,8 @@ func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 				UsedToday: c.Limiter.UsedToday(), License: c.Source.License, Signup: c.Source.Signup})
 		}
 		out["sources"] = list
-		out["editable"] = !s.opt.Team && !s.opt.Demo
+		out["editable"] = false
 		out["internal_domains"] = s.eng.InternalDomains()
-		if s.opt.Demo {
-			out["samples"] = sources.DemoSamples
-		}
 	}
 	writeJSON(w, 200, out)
 }
@@ -444,38 +421,5 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	job.Cancel()
-	writeJSON(w, 200, map[string]bool{"ok": true})
-}
-
-func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
-	if s.opt.Team || s.opt.Demo {
-		writeError(w, http.StatusForbidden, "settings_managed", "Einstellungen werden im Serverbetrieb über die Konfiguration gesetzt")
-		return
-	}
-	var body struct {
-		Keys            map[string]string `json:"keys"`
-		InternalDomains *[]string         `json:"internal_domains"`
-	}
-	if !readJSON(w, r, &body) {
-		return
-	}
-	known := config.KeyNames()
-	for k, v := range body.Keys {
-		if !known[k] {
-			writeError(w, http.StatusBadRequest, "unknown_key", "Unbekannter Key-Name")
-			return
-		}
-		body.Keys[k] = strings.TrimSpace(v)
-	}
-	if err := s.cfg.Update(body.Keys, body.InternalDomains); err != nil {
-		writeError(w, 500, "save_failed", "Einstellungen konnten nicht gespeichert werden")
-		return
-	}
-	for k, v := range body.Keys {
-		s.eng.SetKey(k, v)
-	}
-	if body.InternalDomains != nil {
-		s.eng.SetInternalDomains(*body.InternalDomains)
-	}
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }

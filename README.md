@@ -1,6 +1,6 @@
 # OSINT-Check
 
-Prüft URLs, Hashes, IPs, Domains und lokale Dateien parallel bei mehreren Threat-Intelligence-Diensten. Linux-Anwendung mit Browseroberfläche, lokal oder als Team-Server. Unterstützte Release-Ziele: Linux amd64 und arm64. Es ist kein reines Terminalprogramm.
+Prüft URLs, Hashes, IPs, Domains und lokale Dateien parallel bei mehreren Threat-Intelligence-Diensten. Die Weboberfläche läuft mit Docker Compose hinter Caddy.
 
 ```text
 Eingabe (Text oder Datei)
@@ -35,9 +35,9 @@ Vor dem Einsatz im Unternehmen unbedingt prüfen. Stand der Angaben: November 20
 
 Das Tool setzt keine Lizenz durch. Bezahlte Limits trägst du unter `limits` in der `config.json` ein, einzelne Dienste schaltest du mit `disabled_sources` ab. Mehrere Gratis-Konten zur Limit-Umgehung sind bei VirusTotal und AbuseIPDB verboten.
 
-## Team-Server
+## Installation mit Docker Compose
 
-Empfohlen ist Docker Compose mit Caddy als HTTPS-Proxy. Die Vorlage liegt in `deploy/`.
+Voraussetzung ist Docker mit Compose. Die Konfiguration liegt in `deploy/`.
 
 **Erstinstallation**
 
@@ -67,51 +67,13 @@ docker compose logs -f app
 
 **Eigener Proxy statt Caddy:** Mit `--trust-proxy` starten und den Dienst nur für den Proxy erreichbar machen. Der Proxy muss den originalen `Host` weitergeben sowie `X-Forwarded-Proto` und `X-Forwarded-For` setzen, bei nginx etwa `proxy_set_header Host $host`.
 
-**Ohne Docker und Proxy:**
-
-```bash
-read -rsp 'Team-Passwort: ' OSINT_PASSWORD; echo
-export OSINT_PASSWORD
-./dist/osint-check-linux-amd64 --server --listen 0.0.0.0:8484 --tls-cert cert.pem --tls-key key.pem
-```
-
 **Im Serverbetrieb gilt:**
 
-- Der Dienst startet nur mit gesetztem Passwort und im Netz nur mit TLS oder `--trust-proxy`. Das Passwort ist frei wählbar.
+- Der Dienst startet nur mit gesetztem Passwort und mit `--trust-proxy` hinter dem HTTPS-Proxy. Das Passwort ist frei wählbar.
 - Alle teilen sich ein Team-Passwort. Es gibt keine einzelnen Konten und kein Protokoll, wer was geprüft hat.
 - Anmeldebremse: 5 Fehlversuche pro Minute je IP und 30 insgesamt. Browser, die sich schon einmal erfolgreich angemeldet haben, bekommen ein Geräte-Cookie und zählen nur gegen ihr eigenes Limit, Angriffe von außen sperren das Team also nicht aus. Nach einem Neustart des Dienstes gelten alle Browser wieder als neu.
 - API-Keys liegen nur auf dem Server und erscheinen nie in der Oberfläche.
 - Limits und Zwischenspeicher gelten für das ganze Team.
-
-## Linux-Dienst mit systemd (ohne Docker)
-
-Die Unit in `deploy/osint-check.service` verwendet einen dynamischen Benutzer,
-ein schreibgeschütztes Dateisystem und bindet nur an `127.0.0.1:8484`.
-Ein **lokaler HTTPS-Reverse-Proxy** muss vorgeschaltet werden. Beim vorhandenen
-Caddy-Beispiel dafür `reverse_proxy app:8484` durch
-`reverse_proxy 127.0.0.1:8484` ersetzen. Das Compose-Netzwerk verwendet weiterhin
-`app:8484`. Port 8484 nicht öffentlich weiterleiten.
-
-```bash
-make build
-sudo install -m 0755 dist/osint-check-linux-amd64 /usr/local/bin/osint-check
-sudo install -d -m 0755 /etc/osint-check
-sudo install -m 0644 deploy/config.example.json /etc/osint-check/config.json
-sudo install -m 0600 deploy/systemd.env.example /etc/osint-check/osint-check.env
-sudoedit /etc/osint-check/osint-check.env
-sudoedit /etc/osint-check/config.json
-sudo install -m 0644 deploy/osint-check.service /etc/systemd/system/osint-check.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now osint-check
-sudo systemctl status osint-check
-```
-
-Auf ARM64 das entsprechende Binary installieren. In der Environment-Datei vor
-dem Start mindestens `OSINT_PASSWORD` setzen; API-Keys sind optional.
-`config.json` enthält in diesem Beispiel nur nicht geheime Einstellungen.
-Nach Konfigurationsänderungen `sudo systemctl restart osint-check` ausführen.
-Logs: `journalctl -u osint-check`. Es werden keine Dateien von Nutzern auf dem
-Server gespeichert; die Datei-Hashes entstehen im Browser.
 
 ## Weiter analysieren
 
@@ -145,21 +107,3 @@ Die Dienste von abuse.ch zählen zusammen als eine Stimme. VirusTotal stuft Date
 - Mit 4 Abfragen pro Minute dauern 100 Werte bei VirusTotal rund 25 Minuten. Die Oberfläche muss dabei offen bleiben, verlassene Prüfungen enden nach 3 Minuten.
 - In Firmennetzen bei Bedarf `HTTPS_PROXY` und `NO_PROXY` in der Dienstumgebung setzen.
 - Kann die Feodo-Liste nach Ablauf ihres einstündigen Caches nicht aktualisiert werden, wird die Quelle als Fehler angezeigt. Veraltete Listen werden nicht als aktuelle Prüfung verwendet.
-
-## Entwicklung
-
-```bash
-make test       # Tests mit Race Detector; benötigt einen C-Compiler
-make vet
-make release    # statische Linux-Binaries für amd64 und arm64
-```
-
-GitHub Actions führt Tests und Linux-Builds aus. Die Weboberfläche ist in das
-Binary eingebettet. Es gibt keine externen Go-Abhängigkeiten außer der
-Standardbibliothek. Für Releases eine aktuell unterstützte Go-Version verwenden.
-Die Mindestversion in `go.mod` ist keine Empfehlung für den produktiven Betrieb.
-Weitere Dienste werden in `internal/sources` als `Source` ergänzt.
-
-Version 1.3.1 entfernt Spamhaus DROP wieder, um das Tool schlank zu halten.
-Version 1.2.3 korrigiert Kontingentverbrauch nach Abbruch, die Gewichtung gleicher
-Quellengruppen, die Behandlung abschließender URL-Zeichen und den Feodo-Fehlerfall.

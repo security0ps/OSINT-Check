@@ -6,8 +6,6 @@ import (
 	"errors"
 	"io/fs"
 	"os"
-	"path/filepath"
-	"sync"
 
 	"osint-check/internal/sources"
 )
@@ -20,8 +18,6 @@ type Config struct {
 	Limits          map[string]sources.Limit `json:"limits"`
 	Password        string                   `json:"password,omitempty"`
 
-	mu   sync.Mutex
-	path string
 }
 
 // Umgebungsvariablen haben Vorrang vor der Datei (praktisch für Docker).
@@ -33,18 +29,9 @@ var envKeys = map[string]string{
 	"otx":        "OSINT_OTX_KEY",
 }
 
-// DefaultPath verwendet unter Linux $XDG_CONFIG_HOME, sonst ~/.config.
-func DefaultPath() string {
-	dir, err := os.UserConfigDir()
-	if err != nil {
-		return "osint-check-config.json"
-	}
-	return filepath.Join(dir, "OSINT-Check", "config.json")
-}
-
 // Load liest die Datei. Eine fehlende Datei ist kein Fehler.
 func Load(path string) (*Config, error) {
-	c := &Config{Keys: map[string]string{}, Limits: map[string]sources.Limit{}, path: path}
+	c := &Config{Keys: map[string]string{}, Limits: map[string]sources.Limit{}}
 	data, err := os.ReadFile(path)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
@@ -69,56 +56,6 @@ func Load(path string) (*Config, error) {
 	return c, nil
 }
 
-// Path liefert den Dateipfad.
-func (c *Config) Path() string { return c.path }
-
-// Update ändert Keys und speichert atomar. Leere Werte löschen einen Key.
-// Geschrieben wird nur der Dateiinhalt, damit Werte aus Umgebungsvariablen
-// nicht in der Datei landen.
-func (c *Config) Update(keys map[string]string, internal *[]string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	onDisk := map[string]any{}
-	data, err := os.ReadFile(c.path)
-	if err == nil {
-		if err := json.Unmarshal(data, &onDisk); err != nil {
-			return errors.New("config.json ist kein gültiges JSON: " + c.path)
-		}
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		return err
-	}
-	stored, _ := onDisk["keys"].(map[string]any)
-	if stored == nil {
-		stored = map[string]any{}
-	}
-	for k, v := range keys {
-		if v == "" {
-			delete(stored, k)
-			delete(c.Keys, k)
-		} else {
-			stored[k] = v
-			c.Keys[k] = v
-		}
-	}
-	onDisk["keys"] = stored
-	if internal != nil {
-		onDisk["internal_domains"] = *internal
-		c.InternalDomains = *internal
-	}
-	if err := os.MkdirAll(filepath.Dir(c.path), 0o700); err != nil {
-		return err
-	}
-	out, err := json.MarshalIndent(onDisk, "", "  ")
-	if err != nil {
-		return err
-	}
-	tmp := c.path + ".tmp"
-	if err := os.WriteFile(tmp, out, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, c.path)
-}
-
 // Disabled meldet, ob eine Quelle abgeschaltet ist.
 func (c *Config) Disabled(id string) bool {
 	for _, d := range c.DisabledSources {
@@ -127,13 +64,4 @@ func (c *Config) Disabled(id string) bool {
 		}
 	}
 	return false
-}
-
-// KeyNames liefert die bekannten Key-Namen.
-func KeyNames() map[string]bool {
-	out := map[string]bool{}
-	for k := range envKeys {
-		out[k] = true
-	}
-	return out
 }

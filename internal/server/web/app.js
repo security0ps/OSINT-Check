@@ -69,23 +69,12 @@
   }
 
   function applyMeta() {
-    $('demoBanner').hidden = !meta.demo;
-    const chip = $('modeChip');
-    chip.hidden = false;
-    chip.textContent = meta.demo ? 'Demo' : meta.team ? 'Team' : t('Lokal', 'Local');
     $('logoutBtn').hidden = !meta.auth_required;
     $('sourcesBtn').hidden = false;
     $('maxItems').textContent = meta.max_indicators;
     const active = meta.sources.filter((s) => s.configured).length;
     $('sourcesCount').textContent = `${active}/${meta.sources.length}`;
-    $('sampleBtn').hidden = !meta.samples;
-    $('settingsArea').hidden = !meta.editable;
-    $('teamNote').hidden = !meta.team;
-    $('licenseNote').hidden = !!meta.demo;
-    if (!meta.demo && meta.sources.every((s) => s.key_name === undefined || !s.configured) && !meta.team) {
-      $('sourcesDialog').showModal();
-      renderSources();
-    }
+
   }
 
   // --- Prüfung -----------------------------------------------------------
@@ -436,53 +425,6 @@
       }
       box.append(row);
     });
-    if (meta.editable) addKeyInputs(box);
-    $('internalDomains').value = (meta.internal_domains || []).join('\n');
-    setMessage($('settingsStatus'), '');
-  }
-
-  function addKeyInputs(box) {
-    const seen = new Set();
-    meta.sources.forEach((s) => {
-      if (!s.key_name || seen.has(s.key_name)) return;
-      seen.add(s.key_name);
-      const row = el('div', 'source-row');
-      const shared = meta.sources.filter((x) => x.key_name === s.key_name).map((x) => x.name).join(', ');
-      const label = el('label', '', `${t('API-Key', 'API key')}: ${shared}`);
-      const id = 'key-' + s.key_name;
-      label.htmlFor = id;
-      const input = el('input');
-      input.type = 'password';
-      input.id = id;
-      input.autocomplete = 'off';
-      input.dataset.key = s.key_name;
-      input.placeholder = s.configured ? t('Gespeichert. Neuer Wert ersetzt den Key, „-“ löscht ihn', 'Saved. Enter a new value to replace the key or “-” to remove it') : t('Key einfügen', 'Enter key');
-      row.append(label, input);
-      box.append(row);
-    });
-  }
-
-  async function saveSettings() {
-    const keys = {};
-    document.querySelectorAll('[data-key]').forEach((i) => {
-      if (i.value === '-') keys[i.dataset.key] = '';
-      else if (i.value.trim()) keys[i.dataset.key] = i.value.trim();
-    });
-    const domains = $('internalDomains').value.split(/\s+/).filter(Boolean);
-    try {
-      await api('settings', 'PUT', { keys, internal_domains: domains });
-      await refreshMeta();
-      applyStatus();
-      renderSources();
-      setMessage($('settingsStatus'), 'Gespeichert');
-    } catch (e) {
-      setMessage($('settingsStatus'), e.message, e.code);
-    }
-  }
-
-  function applyStatus() {
-    const active = meta.sources.filter((s) => s.configured).length;
-    $('sourcesCount').textContent = `${active}/${meta.sources.length}`;
   }
 
   // --- Export ------------------------------------------------------------
@@ -564,13 +506,11 @@
   $('input').addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !$('checkBtn').disabled) start();
   });
-  $('sampleBtn').addEventListener('click', () => { $('input').value = meta.samples; });
   $('sourcesBtn').addEventListener('click', async () => {
     await refreshMeta();
     renderSources();
     $('sourcesDialog').showModal();
   });
-  $('saveSettings').addEventListener('click', saveSettings);
   $('exportBar').addEventListener('click', (e) => {
     const f = e.target.closest('[data-export]')?.dataset.export;
     if (f) download(f);
@@ -606,9 +546,6 @@
   }
 
   language.bind(() => {
-    if (meta && !$('app').hidden) {
-      $('modeChip').textContent = meta.demo ? 'Demo' : meta.team ? 'Team' : t('Lokal', 'Local');
-    }
     $('checkBtn').textContent = !$('cancelBtn').hidden && !hashing
       ? t('Prüfung läuft …', 'Checking …') : t('Prüfen', 'Check');
     document.querySelectorAll('[data-message]').forEach(node => {

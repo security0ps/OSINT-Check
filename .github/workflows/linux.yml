@@ -1,4 +1,4 @@
-name: Linux checks
+name: Docker checks
 on: [push, pull_request]
 permissions:
   contents: read
@@ -11,8 +11,14 @@ jobs:
         with:
           go-version: stable
           cache: false
-      - run: make test vet release
-      - uses: actions/upload-artifact@v4
-        with:
-          name: osint-check-linux
-          path: dist/osint-check-linux-*
+      - run: go test -race ./... && go vet ./...
+      - name: Build and check the Compose service
+        working-directory: deploy
+        run: |
+          cp .env.example .env
+          sed -i "s/^OSINT_PASSWORD=.*/OSINT_PASSWORD=$(openssl rand -hex 32)/" .env
+          mkdir -p config
+          cp config.example.json config/config.json
+          docker compose up --build -d --wait --wait-timeout 90 app
+          docker compose exec -T app wget -qO- http://127.0.0.1:8484/healthz
+          docker compose down

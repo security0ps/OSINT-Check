@@ -45,7 +45,7 @@ func floodGlobal(t *testing.T, s *Server) {
 
 // Verteilte Fehlversuche Unbekannter dürfen Kollegen mit bekanntem Gerät nicht aussperren.
 func TestGlobalLimitSparesKnownDevice(t *testing.T) {
-	s, _ := build(t, Options{Team: true, Password: "dummy-secret", TrustProxy: true})
+	s := build(t, Options{Password: "dummy-secret", TrustProxy: true})
 	res := loginReq(s, "203.0.113.7", "dummy-secret")
 	if res.StatusCode != 200 {
 		t.Fatalf("erste Anmeldung: %d", res.StatusCode)
@@ -69,7 +69,7 @@ func TestGlobalLimitSparesKnownDevice(t *testing.T) {
 			t.Fatalf("gefälschtes Geräte-Cookie %q akzeptiert: %d", v, c)
 		}
 	}
-	other, _ := build(t, Options{Team: true, Password: "dummy-secret", TrustProxy: true})
+	other := build(t, Options{Password: "dummy-secret", TrustProxy: true})
 	floodGlobal(t, other)
 	if c := loginReq(other, "203.0.113.12", "dummy-secret", dev).StatusCode; c != http.StatusTooManyRequests {
 		t.Fatalf("Geräte-Cookie einer anderen Instanz akzeptiert: %d", c)
@@ -78,7 +78,7 @@ func TestGlobalLimitSparesKnownDevice(t *testing.T) {
 
 // Ein bekanntes Gerät hat ein eigenes Kontingent und füllt die globale Grenze nicht.
 func TestKnownDeviceOwnBudget(t *testing.T) {
-	s, _ := build(t, Options{Team: true, Password: "dummy-secret", TrustProxy: true})
+	s := build(t, Options{Password: "dummy-secret", TrustProxy: true})
 	dev := deviceCookieFrom(t, loginReq(s, "203.0.113.7", "dummy-secret"))
 	for i := 0; i < loginAttempts; i++ {
 		if c := loginReq(s, fmt.Sprintf("198.51.100.%d", i+1), "falsch", dev).StatusCode; c != http.StatusUnauthorized {

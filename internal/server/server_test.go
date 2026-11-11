@@ -5,29 +5,28 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
-	"osint-check/internal/config"
 	"osint-check/internal/engine"
 	"osint-check/internal/ioc"
 	"osint-check/internal/sources"
 )
 
-func build(t *testing.T, opt Options) (*Server, *config.Config) {
+type offlineTransport struct{}
+
+func (offlineTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return &http.Response{StatusCode: http.StatusNotFound, Body: io.NopCloser(strings.NewReader(""))}, nil
+}
+
+func build(t *testing.T, opt Options) *Server {
 	t.Helper()
-	cfg, err := config.Load(filepath.Join(t.TempDir(), "config.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
 	var cfgs []*engine.SourceConfig
 	for _, s := range sources.All() {
 		cfgs = append(cfgs, &engine.SourceConfig{Source: s, Key: "demo", Limiter: engine.NewLimiter(sources.Limit{})})
 	}
-	return New(engine.New(sources.NewClient(sources.DemoTransport{}), cfgs, ioc.Options{}), cfg, opt), cfg
+	return New(engine.New(sources.NewClient(offlineTransport{}), cfgs, ioc.Options{}), opt)
 }
 
 func req(h http.Handler, method, target, host, body string, mod func(*http.Request)) *httptest.ResponseRecorder {
@@ -46,21 +45,8 @@ func req(h http.Handler, method, target, host, body string, mod func(*http.Reque
 
 const local = "127.0.0.1:8484"
 
-func TestLocalRejectsForeignHost(t *testing.T) {
-	s, _ := build(t, Options{})
-	if w := req(s, "GET", "/api/meta", "evil.example", "", nil); w.Code != 403 {
-		t.Fatal(w.Code)
-	}
-	if w := req(s, "GET", "/api/meta", local, "", nil); w.Code != 200 {
-		t.Fatal(w.Code)
-	}
-	if w := req(s, "GET", "/api/meta", "localhost:8484", "", nil); w.Code != 200 {
-		t.Fatal(w.Code)
-	}
-}
-
 func TestCrossOriginPostRejected(t *testing.T) {
-	s, _ := build(t, Options{})
+	s := build(t, Options{})
 	w := req(s, "POST", "/api/check", local, `{"input":"8.8.8.8"}`, func(r *http.Request) { r.Header.Set("Origin", "https://evil.example") })
 	if w.Code != 403 {
 		t.Fatal(w.Code)
@@ -72,7 +58,7 @@ func TestCrossOriginPostRejected(t *testing.T) {
 }
 
 func TestFormPostRejected(t *testing.T) {
-	s, _ := build(t, Options{})
+	s := build(t, Options{})
 	w := req(s, "POST", "/api/check", local, `input=8.8.8.8`, func(r *http.Request) { r.Header.Set("Content-Type", "text/plain") })
 	if w.Code != 415 {
 		t.Fatal(w.Code)
@@ -80,7 +66,7 @@ func TestFormPostRejected(t *testing.T) {
 }
 
 func TestSecurityHeaders(t *testing.T) {
-	s, _ := build(t, Options{})
+	s := build(t, Options{})
 	w := req(s, "GET", "/", local, "", nil)
 	if w.Code != 200 || !strings.Contains(w.Header().Get("Content-Security-Policy"), "default-src 'none'") || w.Header().Get("X-Content-Type-Options") != "nosniff" {
 		t.Fatal(w.Code, w.Header())
@@ -88,7 +74,7 @@ func TestSecurityHeaders(t *testing.T) {
 }
 
 func TestLoginFlow(t *testing.T) {
-	s, _ := build(t, Options{Team: true, Password: "richtig", TrustProxy: true})
+	s := build(t, Options{Password: "richtig", TrustProxy: true})
 	host := "osint.firma.de"
 	if w := req(s, "POST", "/api/check", host, `{"input":"8.8.8.8"}`, nil); w.Code != 401 {
 		t.Fatal("ohne Anmeldung", w.Code)
@@ -123,7 +109,7 @@ func TestLoginFlow(t *testing.T) {
 }
 
 func TestLoginThrottle(t *testing.T) {
-	s, _ := build(t, Options{Team: true, Password: "x"})
+	s := build(t, Options{Password: "x"})
 	var last int
 	for i := 0; i < 6; i++ {
 		last = req(s, "POST", "/api/login", "a.b", `{"password":"falsch"}`, nil).Code
@@ -136,50 +122,8 @@ func TestLoginThrottle(t *testing.T) {
 	}
 }
 
-func TestTeamCannotChangeKeys(t *testing.T) {
-	s, _ := build(t, Options{Team: true})
-	if w := req(s, "PUT", "/api/settings", "a.b", `{"keys":{"otx":"x"}}`, nil); w.Code != 403 {
-		t.Fatal(w.Code)
-	}
-}
-
-func TestSettingsSavedAndNeverReturned(t *testing.T) {
-	s, cfg := build(t, Options{})
-	w := req(s, "PUT", "/api/settings", local, `{"keys":{"otx":" GEHEIM "},"internal_domains":["firma.de"]}`, nil)
-	if w.Code != 200 {
-		t.Fatal(w.Code, w.Body.String())
-	}
-	data, err := os.ReadFile(cfg.Path())
-	if err != nil || !strings.Contains(string(data), `"GEHEIM"`) {
-		t.Fatalf("%s %v", data, err)
-	}
-	meta := req(s, "GET", "/api/meta", local, "", nil).Body.String()
-	if strings.Contains(meta, "GEHEIM") {
-		t.Fatal("Meta enthält den Key")
-	}
-	if !strings.Contains(meta, "firma.de") {
-		t.Fatal(meta)
-	}
-	if w := req(s, "PUT", "/api/settings", local, `{"keys":{"erfunden":"x"}}`, nil); w.Code != 400 {
-		t.Fatal(w.Code)
-	}
-}
-
-func TestEnvSecretsNotWrittenToFile(t *testing.T) {
-	t.Setenv("OSINT_OTX_KEY", "AUSENV")
-	t.Setenv("OSINT_PASSWORD", "PWENV")
-	s, cfg := build(t, Options{})
-	if w := req(s, "PUT", "/api/settings", local, `{"keys":{"urlscan":"abc"}}`, nil); w.Code != 200 {
-		t.Fatal(w.Code)
-	}
-	data, _ := os.ReadFile(cfg.Path())
-	if strings.Contains(string(data), "AUSENV") || strings.Contains(string(data), "PWENV") {
-		t.Fatal(string(data))
-	}
-}
-
 func TestOversizedBody(t *testing.T) {
-	s, _ := build(t, Options{})
+	s := build(t, Options{})
 	big := `{"input":"` + strings.Repeat("a", 2<<20) + `"}`
 	if w := req(s, "POST", "/api/check", local, big, nil); w.Code != 413 {
 		t.Fatal(w.Code)
@@ -187,14 +131,14 @@ func TestOversizedBody(t *testing.T) {
 }
 
 func TestJobUnknownID(t *testing.T) {
-	s, _ := build(t, Options{})
+	s := build(t, Options{})
 	if w := req(s, "GET", "/api/jobs/nix", local, "", nil); w.Code != 404 {
 		t.Fatal(w.Code)
 	}
 }
 
 func TestStaticAssets(t *testing.T) {
-	s, _ := build(t, Options{})
+	s := build(t, Options{})
 	for _, p := range []string{"/", "/app.js", "/sha256.js", "/style.css"} {
 		w := req(s, "GET", p, local, "", nil)
 		b, _ := io.ReadAll(w.Body)
@@ -214,7 +158,7 @@ func login(s *Server, ip, password string, mod func(*http.Request)) int {
 }
 
 func TestForgedForwardedHeadersIgnoredWithoutProxy(t *testing.T) {
-	s, _ := build(t, Options{Team: true, Password: "x"})
+	s := build(t, Options{Password: "x"})
 	w := req(s, "POST", "/api/login", "a.b", `{"password":"x"}`, func(r *http.Request) { r.Header.Set("X-Forwarded-Proto", "https") })
 	if c := w.Result().Cookies()[0]; c.Secure {
 		t.Fatal("gefälschter Header darf das Verhalten nicht ändern")
@@ -231,7 +175,7 @@ func TestForgedForwardedHeadersIgnoredWithoutProxy(t *testing.T) {
 }
 
 func TestProxyLockoutIsPerClient(t *testing.T) {
-	s, _ := build(t, Options{Team: true, Password: "x", TrustProxy: true})
+	s := build(t, Options{Password: "x", TrustProxy: true})
 	for i := 0; i < 6; i++ {
 		login(s, "198.51.100.1", "falsch", nil)
 	}
@@ -248,7 +192,7 @@ func TestProxyLockoutIsPerClient(t *testing.T) {
 }
 
 func TestGlobalLoginLimit(t *testing.T) {
-	s, _ := build(t, Options{Team: true, Password: "x", TrustProxy: true})
+	s := build(t, Options{Password: "x", TrustProxy: true})
 	for i := 0; i < loginAttemptsGlobal; i++ {
 		login(s, "198.51.100."+strconv.Itoa(i), "falsch", nil)
 	}
@@ -258,7 +202,7 @@ func TestGlobalLoginLimit(t *testing.T) {
 }
 
 func TestSecureHeadersBehindProxy(t *testing.T) {
-	s, _ := build(t, Options{Team: true, TrustProxy: true})
+	s := build(t, Options{TrustProxy: true})
 	w := req(s, "GET", "/", "a.b", "", func(r *http.Request) { r.Header.Set("X-Forwarded-Proto", "https") })
 	if w.Header().Get("Strict-Transport-Security") == "" || w.Header().Get("Cross-Origin-Opener-Policy") == "" {
 		t.Fatal(w.Header())

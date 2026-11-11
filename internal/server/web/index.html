@@ -11,7 +11,7 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">OSINT-Check <span id="modeChip" class="chip" hidden></span></div>
+    <div class="brand">OSINT-Check</div>
     <div class="topbar-actions">
       <select id="language" class="btn" aria-label="Sprache" data-en-label="Language">
         <option lang="de" value="de">Deutsch</option>
@@ -22,7 +22,6 @@
     </div>
   </header>
 
-  <div id="demoBanner" class="banner" hidden><span data-en="Demo mode: All results are simulated. No requests leave this computer.">Demo-Modus: Alle Ergebnisse sind erfunden, und keine Anfrage verlässt diesen Rechner.</span></div>
 
   <main id="app" class="layout" hidden>
     <section class="panel input-panel" aria-labelledby="inputTitle">
@@ -37,7 +36,6 @@
       <p id="fileStatus" class="hint small" role="status" hidden></p>
       <div class="input-row">
         <label class="check"><input id="fresh" type="checkbox"> <span data-en="Bypass cache">Zwischenspeicher umgehen</span></label>
-        <button id="sampleBtn" class="btn ghost" type="button" hidden><span data-en="Examples">Beispiele</span></button>
       </div>
       <div class="input-row">
         <button id="checkBtn" class="btn primary" type="button"><span data-en="Check">Prüfen</span></button>
@@ -84,15 +82,7 @@
     </form>
     <p id="licenseNote" class="note"><span data-en="Most services restrict commercial use of their free plans. Check their terms before using this tool at work.">Die Gratis-Zugänge der meisten Dienste sind nicht für kommerzielle Nutzung gedacht. Prüfe die Bedingungen, bevor du das Tool im Unternehmen einsetzt.</span></p>
     <div id="sourcesList"></div>
-    <div id="settingsArea" hidden>
-      <label for="internalDomains"><span data-en="Internal domains to exclude from lookups">Eigene Domains, die nie gesendet werden</span></label>
-      <textarea id="internalDomains" rows="3" spellcheck="false" placeholder="firma.de"></textarea>
-      <div class="dialog-foot">
-        <span id="settingsStatus" class="hint small" role="status"></span>
-        <button id="saveSettings" class="btn primary" type="button"><span data-en="Save">Speichern</span></button>
-      </div>
-    </div>
-    <p id="teamNote" class="hint small" hidden><span data-en="In team mode, API keys are managed on the server.">Keys werden im Team-Betrieb auf dem Server verwaltet.</span></p>
+    <p class="hint small"><span data-en="In team mode, API keys are managed on the server.">Keys werden im Team-Betrieb auf dem Server verwaltet.</span></p>
   </dialog>
 
   <script src="sha256.js"></script>

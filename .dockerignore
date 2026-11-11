@@ -1,8 +1,5 @@
-.git
-dist
-deploy
-*.md
-*.exe
-.env
-**/.env
-config.json
+**
+!go.mod
+!main.go
+!internal/
+!internal/**
