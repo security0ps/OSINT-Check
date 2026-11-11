@@ -52,7 +52,9 @@ func authenticatedRequest(s *Server, method, path, host, body string, mod func(*
 	s.mu.Unlock()
 	return req(s, method, path, host, body, func(r *http.Request) {
 		r.AddCookie(&http.Cookie{Name: sessionCookie, Value: "fixture-session"})
-		if mod != nil { mod(r) }
+		if mod != nil {
+			mod(r)
+		}
 	})
 }
 

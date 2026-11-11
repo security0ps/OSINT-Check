@@ -47,7 +47,7 @@ const (
 // Options beschreibt den Betriebsmodus.
 type Options struct {
 	Credentials *Credentials
-	Password string
+	Password    string
 	// TrustProxy wertet X-Forwarded-* aus. Nur setzen, wenn der Dienst
 	// ausschließlich über einen eigenen Reverse Proxy erreichbar ist.
 	TrustProxy bool
@@ -55,7 +55,7 @@ type Options struct {
 
 // Server ist der HTTP-Handler.
 type Server struct {
-	eng  *engine.Engine
+	eng *engine.Engine
 
 	opt  Options
 	mux  *http.ServeMux
@@ -234,50 +234,70 @@ func (s *Server) knownDevice(r *http.Request) string {
 	return id
 }
 
-// throttled prüft das passende Kontingent: bekannte Geräte nur ihr eigenes,
-// unbekannte die Grenze pro IP und die globale Grenze.
-func (s *Server) throttled(ip, dev string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	cut := time.Now().Add(-loginWindow)
-	if dev != "" {
-		d := recentOnly(s.devFail[dev], cut)
-		if len(d) == 0 {
-			delete(s.devFail, dev)
-		} else {
-			s.devFail[dev] = d
-		}
-		return len(d) >= loginAttempts
-	}
-	s.all = recentOnly(s.all, cut)
-	recent := recentOnly(s.fail[ip], cut)
-	if len(recent) == 0 {
-		delete(s.fail, ip)
-	} else {
-		s.fail[ip] = recent
-	}
-	return len(recent) >= loginAttempts || len(s.all) >= loginAttemptsGlobal
-}
-
-func (s *Server) recordFailure(ip, dev string) {
+// admit prüft das Kontingent und zählt den Versuch im selben Schritt.
+// So können gleichzeitige Anfragen das Limit nicht während der langsamen
+// Passwortprüfung umgehen. Bekannte Geräte zählen nur gegen ihr eigenes
+// Kontingent, unbekannte gegen die Grenze je IP und die globale Grenze.
+func (s *Server) admit(ip, dev string) (time.Time, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := time.Now()
+	cut := now.Add(-loginWindow)
 	if dev != "" {
-		if len(s.devFail) >= maxDevices {
-			pruneStale(s.devFail, now.Add(-loginWindow))
+		d := recentOnly(s.devFail[dev], cut)
+		if len(d) >= loginAttempts {
+			s.devFail[dev] = d // recentOnly kürzt in place
+			return now, false
 		}
-		s.devFail[dev] = append(s.devFail[dev], now)
-		return
+		if len(s.devFail) >= maxDevices {
+			pruneStale(s.devFail, cut)
+		}
+		s.devFail[dev] = append(d, now)
+		return now, true
+	}
+	s.all = recentOnly(s.all, cut)
+	recent := recentOnly(s.fail[ip], cut)
+	if len(recent) >= loginAttempts || len(s.all) >= loginAttemptsGlobal {
+		if len(recent) == 0 {
+			delete(s.fail, ip)
+		} else {
+			s.fail[ip] = recent // recentOnly kürzt in place
+		}
+		return now, false
 	}
 	if len(s.fail) >= maxTrackedIPs {
-		pruneStale(s.fail, now.Add(-loginWindow))
+		pruneStale(s.fail, cut)
 		if len(s.fail) >= maxTrackedIPs {
 			s.fail = map[string][]time.Time{}
 		}
 	}
-	s.fail[ip] = append(s.fail[ip], now)
+	s.fail[ip] = append(recent, now)
 	s.all = append(s.all, now)
+	return now, true
+}
+
+// forgive nimmt einen erfolgreichen Versuch wieder aus der Zählung.
+func (s *Server) forgive(ip, dev string, at time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if dev != "" {
+		delete(s.devFail, dev)
+		return
+	}
+	s.fail[ip] = without(s.fail[ip], at)
+	if len(s.fail[ip]) == 0 {
+		delete(s.fail, ip)
+	}
+	s.all = without(s.all, at)
+}
+
+func without(list []time.Time, at time.Time) []time.Time {
+	for i, t := range list {
+		if t.Equal(at) {
+			return append(list[:i:i], list[i+1:]...)
+		}
+	}
+	return list
 }
 
 // pruneStale entfernt nur abgelaufene Einträge statt alle Sperren zu löschen.
@@ -292,7 +312,8 @@ func pruneStale(m map[string][]time.Time, cut time.Time) {
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	ip := s.clientIP(r)
 	dev := s.knownDevice(r)
-	if s.throttled(ip, dev) {
+	at, ok := s.admit(ip, dev)
+	if !ok {
 		log.Printf("Anmeldung gesperrt: %s", ip)
 		writeError(w, http.StatusTooManyRequests, "login_throttled", "Zu viele Fehlversuche, bitte eine Minute warten")
 		return
@@ -304,7 +325,6 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !s.validPassword(body.Password) {
-		s.recordFailure(ip, dev)
 		log.Printf("Anmeldung fehlgeschlagen: %s", ip)
 		writeError(w, http.StatusUnauthorized, "wrong_password", "Passwort ist falsch")
 		return
@@ -323,10 +343,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.sess[hashToken(token)] = now.Add(sessionTTL)
-	if dev != "" {
-		delete(s.devFail, dev)
-	}
 	s.mu.Unlock()
+	s.forgive(ip, dev, at)
 	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: token, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode,
 		Secure: s.secure(r), MaxAge: int(sessionTTL.Seconds())})
 	if dev == "" {

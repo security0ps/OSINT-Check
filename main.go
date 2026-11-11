@@ -25,7 +25,7 @@ import (
 	"osint-check/internal/sources"
 )
 
-var version = "1.3.1"
+var version = "1.3.2"
 
 func main() {
 	trustProxy := flag.Bool("trust-proxy", false, "Dienst läuft hinter eigenem Reverse Proxy, der HTTPS beendet")
@@ -45,7 +45,9 @@ func run(trustProxy bool) error {
 		return errors.New("HTTPS-Proxy (--trust-proxy) erforderlich")
 	}
 	credentials, err := server.OpenCredentials("/data", cfg.Password)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	credentials.ApplyKeys(cfg.Keys)
 	listener, err := net.Listen("tcp", ":8484")
 	if err != nil {

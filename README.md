@@ -55,7 +55,7 @@ docker compose exec app cat /data/setup-code
 
 Öffne die konfigurierte HTTPS-Adresse. Gib bei der ersten Einrichtung den Code aus dem letzten Befehl ein und lege ein Team-Passwort mit mindestens 12 Zeichen fest. Der Code gilt einmal und wird bei einem Neustart vor der Einrichtung erneuert. Wenn bereits ein Passwort über die Umgebung oder Konfiguration gesetzt ist, entfällt der Code und du kannst dich direkt anmelden.
 
-Unter **Quellen** kannst du nach der Anmeldung API-Keys hinzufügen oder ersetzen. Das gilt für alle Personen mit Team-Passwort. Ein gespeicherter Key gilt sofort für neue Prüfungen und hat Vorrang vor dem konfigurierten Key desselben Dienstes. Die drei abuse.ch-Quellen teilen sich einen Key.
+API-Keys kannst du auf zwei Wegen setzen: in der `.env` (`OSINT_VIRUSTOTAL_KEY` usw.) oder nach der Anmeldung unter **Quellen** in der Weboberfläche. Das können alle Personen mit Team-Passwort. **Ein Key aus der Weboberfläche überschreibt den Key desselben Dienstes aus der `.env`**, auch nach Neustarts. Wer einen Key später in der `.env` tauscht, muss deshalb den Web-Key zurücksetzen (siehe Betrieb). Die drei abuse.ch-Quellen teilen sich einen Key.
 
 Das Volume `app_data` enthält den gesalzenen Passwort-Hash und die API-Keys. Keys werden für Abfragen im Klartext benötigt. Schütze das Volume und seine Backups wie deine `.env`. Beim Austausch des Containers wird das Volume weiterverwendet. `docker compose down -v` löscht die Volumes einschließlich der Zugangsdaten.
 
@@ -69,7 +69,9 @@ Das Volume `app_data` enthält den gesalzenen Passwort-Hash und die API-Keys. Ke
 
 **Betrieb:**
 
-- Passwort ändern: `.env` anpassen und `docker compose up -d`. Dabei werden alle abgemeldet.
+- Passwort zurücksetzen (im Browser festgelegt): `docker compose exec app rm /data/password.json`, dann `docker compose restart app` und den neuen Code mit `docker compose exec app cat /data/setup-code` abrufen. Danach im Browser ein neues Passwort festlegen. Alle werden abgemeldet.
+- Passwort über `.env` setzen: `OSINT_PASSWORD` eintragen und `docker compose up -d`. Es hat Vorrang vor dem im Browser festgelegten Passwort. Alle werden abgemeldet.
+- Web-Keys zurücksetzen, damit wieder die Keys aus der `.env` gelten: `docker compose exec app rm /data/keys.json`, dann `docker compose restart app`. Das entfernt alle in der Weboberfläche gespeicherten Keys.
 - Logs enthalten Anmeldungen und Anzahl der geprüften Werte mit IP, aber nie die Werte selbst.
 
 **Eigener Proxy statt Caddy:** Mit `--trust-proxy` starten und den Dienst nur für den Proxy erreichbar machen. Der Proxy muss den originalen `Host` weitergeben sowie `X-Forwarded-Proto` und `X-Forwarded-For` setzen, bei nginx etwa `proxy_set_header Host $host`.
@@ -78,7 +80,7 @@ Das Volume `app_data` enthält den gesalzenen Passwort-Hash und die API-Keys. Ke
 
 - Vor der Einrichtung sind Quellen und Prüfungen gesperrt. Ein gesetztes `OSINT_PASSWORD` hat Vorrang vor dem gespeicherten Passwort.
 - Alle teilen sich ein Team-Passwort. Es gibt keine einzelnen Konten und kein Protokoll, wer was geprüft hat.
-- Anmeldebremse: 5 Fehlversuche pro Minute je IP und 30 insgesamt. Browser, die sich schon einmal erfolgreich angemeldet haben, bekommen ein Geräte-Cookie und zählen nur gegen ihr eigenes Limit, Angriffe von außen sperren das Team also nicht aus. Nach einem Neustart des Dienstes gelten alle Browser wieder als neu.
+- Anmeldebremse: 5 Fehlversuche pro Minute je IP und 30 insgesamt, auch bei gleichzeitigen Anfragen. Browser, die sich schon einmal erfolgreich angemeldet haben, bekommen ein Geräte-Cookie und zählen nur gegen ihr eigenes Limit, Angriffe von außen sperren das Team also nicht aus. Nach einem Neustart des Dienstes gelten alle Browser wieder als neu.
 - API-Keys liegen nur auf dem Server und erscheinen nie in der Oberfläche.
 - Limits und Zwischenspeicher gelten für das ganze Team.
 

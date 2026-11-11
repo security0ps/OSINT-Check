@@ -17,7 +17,6 @@ type Config struct {
 	DisabledSources []string                 `json:"disabled_sources"`
 	Limits          map[string]sources.Limit `json:"limits"`
 	Password        string                   `json:"password,omitempty"`
-
 }
 
 // Umgebungsvariablen haben Vorrang vor der Datei (praktisch für Docker).
