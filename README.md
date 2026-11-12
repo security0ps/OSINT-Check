@@ -74,6 +74,14 @@ Das Volume `app_data` enthält den gesalzenen Passwort-Hash und die API-Keys. Ke
 - Web-Keys zurücksetzen, damit wieder die Keys aus der `.env` gelten: `docker compose exec app rm /data/keys.json`, dann `docker compose restart app`. Das entfernt alle in der Weboberfläche gespeicherten Keys.
 - Logs enthalten Anmeldungen und Anzahl der geprüften Werte mit IP, aber nie die Werte selbst.
 
+**HTTPS-Inspektion (SSL-Scanning) auf Ubuntu.** Wenn der Firmenproxy ausgehende API-Verbindungen prüft, muss seine CA im Zertifikatsspeicher des Docker-Hosts enthalten sein. Ist `/etc/ssl/certs/ca-certificates.crt` auf dem Host als Bundle-Datei vorhanden, ergänze in `deploy/docker-compose.yml` unter `services.app.volumes` diese Zeile:
+
+```yaml
+      - /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro
+```
+
+Führe anschließend im Ordner `deploy/` den Befehl `docker compose up -d --force-recreate app` aus.
+
 **Eigener Proxy statt Caddy:** Mit `--trust-proxy` starten und den Dienst nur für den Proxy erreichbar machen. Der Proxy muss den originalen `Host` weitergeben sowie `X-Forwarded-Proto` und `X-Forwarded-For` setzen, bei nginx etwa `proxy_set_header Host $host`.
 
 **Im Serverbetrieb gilt:**
