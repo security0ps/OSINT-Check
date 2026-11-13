@@ -100,7 +100,14 @@ const language = (() => {
     "Malware-Familien": "Malware families",
     "Beispiel-Pulse": "Example pulse",
     "Quellen": "Sources",
-    "Zuletzt aktiv": "Last active"
+    "Zuletzt aktiv": "Last active",
+    "Öffentliche Registry-Daten, ohne API-Key": "Public registry data, no API key",
+    "Registrierungsdatum nicht veröffentlicht": "Registration date not published",
+    "Für diese Endung gibt es keinen RDAP-Dienst": "No RDAP service for this top-level domain",
+    "Domain bei der Registry nicht gefunden": "Domain not found at the registry",
+    "Kein Domainname": "Not a domain name",
+    "Registriert": "Registered",
+    "Läuft ab": "Expires",
   };
   const codes = {
     "setup_closed": "Setup is closed",
@@ -129,6 +136,8 @@ const language = (() => {
     "job_missing": "Check not found",
     "settings_managed": "In server mode, settings are managed in the configuration file",
     "unknown_key": "Unknown key name",
+    "key_rejected": "The service rejected the key. It was not saved",
+    "key_unverified": "The key could not be tested with the service. It was not saved",
     "save_failed": "Could not save settings"
   };
   const patterns = [
@@ -148,6 +157,8 @@ const language = (() => {
     [/^Dienst meldet Störung \(HTTP (\d+)\)$/, 'Service error (HTTP $1)'],
     [/^unerwartete Antwort \(HTTP (\d+)\)$/, 'Unexpected response (HTTP $1)'],
     [/^Nicht lesbar: ([\s\S]*)$/, 'Could not read: $1'],
+    [/^Neu registriert am (\S+) \((\d+) Tage alt\)$/, 'Newly registered on $1 ($2 days old)'],
+    [/^Registriert am (\S+) \((\d+) Tage alt\)$/, 'Registered on $1 ($2 days old)'],
   ];
 
   function message(value, code) {
@@ -158,6 +169,7 @@ const language = (() => {
       ['Achtung: ', 'Warning: '],
       ['Als Malware-URL gelistet, Status: ', 'Listed as a malware URL, status: '],
       ['Feodo-Liste konnte nicht aktualisiert werden: ', 'Could not update the Feodo list: '],
+      ['RDAP-Verzeichnis der IANA konnte nicht geladen werden: ', 'Could not load the IANA RDAP directory: '],
     ];
     for (const [de, en] of prefixes) {
       if (value.startsWith(de)) return en + message(value.slice(de.length));

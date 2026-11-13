@@ -72,6 +72,8 @@ type Source struct {
 	License string // Hinweis zu Gratis-Nutzung
 	Signup  string
 	Check   func(ctx context.Context, c *Client, key string, in ioc.Indicator) (Finding, error)
+	// Verify prüft einen Key an einer Stelle, die einen gültigen Key verlangt.
+	Verify func(ctx context.Context, c *Client, key string) error
 }
 
 // Supports meldet, ob die Quelle den Typ abfragen kann.
@@ -83,6 +85,9 @@ func (s *Source) Supports(t ioc.Type) bool {
 	}
 	return false
 }
+
+// ErrUnauthorized signalisiert, dass der Dienst den API-Key abgelehnt hat.
+var ErrUnauthorized = errors.New("API-Key ungültig oder ohne Berechtigung")
 
 // ErrRateLimited signalisiert HTTP 429.
 var ErrRateLimited = errors.New("Abfragelimit des Dienstes erreicht")
@@ -160,7 +165,7 @@ func httpError(code int) error {
 	case code == 200:
 		return nil
 	case code == 401 || code == 403:
-		return errors.New("API-Key ungültig oder ohne Berechtigung")
+		return ErrUnauthorized
 	case code == 429:
 		return ErrRateLimited
 	case code >= 500:
@@ -209,5 +214,5 @@ func capList(in []string, n int) []string {
 
 // All liefert alle bekannten Quellen in Anzeigereihenfolge.
 func All() []*Source {
-	return []*Source{virusTotal(), abuseIPDB(), urlscan(), urlhaus(), malwareBazaar(), threatFox(), otx(), circl(), newFeodo()}
+	return []*Source{virusTotal(), abuseIPDB(), urlscan(), urlhaus(), malwareBazaar(), threatFox(), otx(), circl(), newFeodo(), newRDAP()}
 }

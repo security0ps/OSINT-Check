@@ -394,6 +394,9 @@ func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 		}
 		out["sources"] = list
 		out["editable"] = s.opt.Credentials != nil
+		if s.opt.Credentials != nil {
+			out["web_keys"] = s.opt.Credentials.webKeys()
+		}
 		out["internal_domains"] = s.eng.InternalDomains()
 	}
 	writeJSON(w, 200, out)
