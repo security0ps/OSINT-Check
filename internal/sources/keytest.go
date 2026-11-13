@@ -2,6 +2,7 @@ package sources
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -10,8 +11,7 @@ import (
 )
 
 // Ein Key gilt nur als geprüft, wenn der Dienst eine Anfrage, die einen
-// gültigen Key verlangt, mit HTTP 200 beantwortet. 404, Netzfehler oder
-// andere Antworten bestätigen nichts.
+// gültigen Key verlangt, mit HTTP 200 und den erwarteten Daten beantwortet.
 
 // ErrKeyUnverified bedeutet: Der Dienst hat weder angenommen noch abgelehnt.
 var ErrKeyUnverified = errors.New("Key konnte nicht geprüft werden")
@@ -32,24 +32,65 @@ func verifyStatus(code int, err error) error {
 }
 
 func verifyVT(ctx context.Context, c *Client, key string) error {
-	code, _, err := c.do(ctx, http.MethodGet, c.base("https://www.virustotal.com/api/v3")+"/domains/example.com", map[string]string{"x-apikey": key}, nil)
-	return verifyStatus(code, err)
+	code, data, err := c.do(ctx, http.MethodGet, c.base("https://www.virustotal.com/api/v3")+"/domains/example.com", map[string]string{"x-apikey": key}, nil)
+	if err := verifyStatus(code, err); err != nil {
+		return err
+	}
+	var r struct {
+		Data struct {
+			Type string
+			ID   string
+		}
+	}
+	if decode(data, &r) != nil || r.Data.Type != "domain" || r.Data.ID != "example.com" {
+		return ErrKeyUnverified
+	}
+	return nil
 }
 
 func verifyAbuseIPDB(ctx context.Context, c *Client, key string) error {
 	q := url.Values{"ipAddress": {"8.8.8.8"}, "maxAgeInDays": {"1"}}
-	code, _, err := c.do(ctx, http.MethodGet, c.base("https://api.abuseipdb.com/api/v2")+"/check?"+q.Encode(), map[string]string{"Key": key}, nil)
-	return verifyStatus(code, err)
+	code, data, err := c.do(ctx, http.MethodGet, c.base("https://api.abuseipdb.com/api/v2")+"/check?"+q.Encode(), map[string]string{"Key": key}, nil)
+	if err := verifyStatus(code, err); err != nil {
+		return err
+	}
+	var r struct {
+		Data struct {
+			IPAddress string
+		}
+	}
+	if decode(data, &r) != nil || r.Data.IPAddress != "8.8.8.8" {
+		return ErrKeyUnverified
+	}
+	return nil
 }
 
 func verifyURLscan(ctx context.Context, c *Client, key string) error {
-	code, _, err := c.do(ctx, http.MethodGet, c.base("https://urlscan.io/api/v1")+"/quotas", map[string]string{"API-Key": key}, nil)
-	return verifyStatus(code, err)
+	code, data, err := c.do(ctx, http.MethodGet, c.base("https://urlscan.io/api/v1")+"/quotas", map[string]string{"API-Key": key}, nil)
+	if err := verifyStatus(code, err); err != nil {
+		return err
+	}
+	var r struct {
+		Limits map[string]json.RawMessage
+	}
+	if decode(data, &r) != nil || len(r.Limits) == 0 {
+		return ErrKeyUnverified
+	}
+	return nil
 }
 
 func verifyOTX(ctx context.Context, c *Client, key string) error {
-	code, _, err := c.do(ctx, http.MethodGet, c.base("https://otx.alienvault.com/api/v1")+"/pulses/subscribed?limit=1", map[string]string{"X-OTX-API-KEY": key}, nil)
-	return verifyStatus(code, err)
+	code, data, err := c.do(ctx, http.MethodGet, c.base("https://otx.alienvault.com/api/v1")+"/pulses/subscribed?limit=1", map[string]string{"X-OTX-API-KEY": key}, nil)
+	if err := verifyStatus(code, err); err != nil {
+		return err
+	}
+	var r struct {
+		Results []json.RawMessage
+	}
+	if decode(data, &r) != nil || r.Results == nil {
+		return ErrKeyUnverified
+	}
+	return nil
 }
 
 // abuse.ch: Eine Host-Abfrage bei URLhaus verlangt den Auth-Key. Nur eine

@@ -10,19 +10,26 @@ func TestVerifyNeedsAcceptedKey(t *testing.T) {
 	cases := []struct {
 		name   string
 		base   string
+		body   string
 		verify func(context.Context, *Client, string) error
 	}{
-		{"VirusTotal", "https://www.virustotal.com/api/v3", verifyVT},
-		{"AbuseIPDB", "https://api.abuseipdb.com/api/v2", verifyAbuseIPDB},
-		{"urlscan", "https://urlscan.io/api/v1", verifyURLscan},
-		{"OTX", "https://otx.alienvault.com/api/v1", verifyOTX},
+		{"VirusTotal", "https://www.virustotal.com/api/v3", `{"data":{"type":"domain","id":"example.com"}}`, verifyVT},
+		{"AbuseIPDB", "https://api.abuseipdb.com/api/v2", `{"data":{"ipAddress":"8.8.8.8"}}`, verifyAbuseIPDB},
+		{"urlscan", "https://urlscan.io/api/v1", `{"limits":{"search":{}}}`, verifyURLscan},
+		{"OTX", "https://otx.alienvault.com/api/v1", `{"results":[]}`, verifyOTX},
 	}
 	for _, tc := range cases {
+		for _, body := range []string{"<html>Proxy</html>", "{}", "null", "{", `{"error":"denied"}`} {
+			c, _ := fake(t, tc.base, 200, body)
+			if err := tc.verify(context.Background(), c, "dummy-key"); !errors.Is(err, ErrKeyUnverified) {
+				t.Fatalf("%s: unerwartete Antwort bestätigt: %s", tc.name, body)
+			}
+		}
 		for _, step := range []struct {
 			status int
 			want   error
 		}{{200, nil}, {401, ErrUnauthorized}, {403, ErrUnauthorized}, {404, ErrKeyUnverified}, {429, ErrKeyUnverified}, {500, ErrKeyUnverified}} {
-			c, got := fake(t, tc.base, step.status, `{}`)
+			c, got := fake(t, tc.base, step.status, tc.body)
 			err := tc.verify(context.Background(), c, "dummy-key")
 			if (step.want == nil) != (err == nil) || (step.want != nil && !errors.Is(err, step.want)) {
 				t.Fatalf("%s HTTP %d: %v", tc.name, step.status, err)

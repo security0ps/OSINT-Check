@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/net/publicsuffix"
+
 	"osint-check/internal/ioc"
 )
 
@@ -121,44 +123,37 @@ func (d *rdapDirectory) check(ctx context.Context, c *Client, in ioc.Indicator) 
 	if in.Type == ioc.URL {
 		host = in.Host
 	}
-	labels := strings.Split(strings.TrimSuffix(strings.ToLower(host), "."), ".")
-	if _, err := netip.ParseAddr(strings.Trim(host, "[]")); err == nil || len(labels) < 2 {
+	host = strings.TrimSuffix(strings.ToLower(host), ".")
+	name, suffixErr := publicsuffix.EffectiveTLDPlusOne(host)
+	if _, err := netip.ParseAddr(strings.Trim(host, "[]")); err == nil || suffixErr != nil {
 		return Finding{Verdict: NotFound, Summary: "Kein Domainname"}, nil
 	}
 	servers, err := d.load(ctx, c)
 	if err != nil {
 		return Finding{}, err
 	}
-	base, ok := servers[labels[len(labels)-1]]
+	base, ok := servers[name[strings.LastIndexByte(name, '.')+1:]]
 	if !ok {
 		return Finding{Verdict: Info, Summary: "Für diese Endung gibt es keinen RDAP-Dienst"}, nil
 	}
-	// Ohne Public-Suffix-Liste: zuerst der längere Name aus drei Labels
-	// (firma.co.uk), dann zwei (firma.com). Ein Datensatz zählt nur, wenn die
-	// Registry genau den angefragten Namen zurückgibt, nicht etwa die
-	// übergeordnete Domain.
-	for n := min(3, len(labels)); n >= 2; n-- {
-		name := strings.Join(labels[len(labels)-n:], ".")
-		code, data, err := c.do(ctx, http.MethodGet, base+"domain/"+url.PathEscape(name), map[string]string{"Accept": "application/rdap+json, application/json"}, nil)
-		if err != nil {
-			return Finding{}, err
-		}
-		if code == http.StatusNotFound {
-			continue
-		}
-		if err := httpError(code); err != nil {
-			return Finding{}, err
-		}
-		var r rdapDomain
-		if err := decode(data, &r); err != nil {
-			return Finding{}, err
-		}
-		if !strings.EqualFold(strings.TrimSuffix(r.LDHName, "."), name) {
-			continue
-		}
-		return rdapFinding(name, r, time.Now()), nil
+	code, data, err := c.do(ctx, http.MethodGet, base+"domain/"+url.PathEscape(name), map[string]string{"Accept": "application/rdap+json, application/json"}, nil)
+	if err != nil {
+		return Finding{}, err
 	}
-	return Finding{Verdict: NotFound, Summary: "Domain bei der Registry nicht gefunden"}, nil
+	if code == http.StatusNotFound {
+		return Finding{Verdict: NotFound, Summary: "Domain bei der Registry nicht gefunden"}, nil
+	}
+	if err := httpError(code); err != nil {
+		return Finding{}, err
+	}
+	var r rdapDomain
+	if err := decode(data, &r); err != nil {
+		return Finding{}, err
+	}
+	if !strings.EqualFold(strings.TrimSuffix(r.LDHName, "."), name) {
+		return Finding{Verdict: NotFound, Summary: "Domain bei der Registry nicht gefunden"}, nil
+	}
+	return rdapFinding(name, r, time.Now()), nil
 }
 
 func rdapFinding(name string, r rdapDomain, now time.Time) Finding {

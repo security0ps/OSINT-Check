@@ -75,6 +75,8 @@ func TestRDAPDomainAge(t *testing.T) {
 		{"falsch.com", NotFound, "nicht gefunden"},
 		{"ohne-datum.com", Info, "nicht veröffentlicht"},
 		{"www.shop.co.uk", Suspicious, "Neu registriert"},
+		{"www.fehlt.co.uk", NotFound, "nicht gefunden"},
+		{"co.uk", NotFound, "Kein Domainname"},
 		{"gibtsnicht.com", NotFound, "nicht gefunden"},
 		{"beispiel.zz", Info, "keinen RDAP-Dienst"},
 	} {

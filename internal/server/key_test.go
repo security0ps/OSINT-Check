@@ -17,14 +17,18 @@ import (
 type statusTransport struct{ code int }
 
 func (s statusTransport) RoundTrip(*http.Request) (*http.Response, error) {
-	return &http.Response{StatusCode: s.code, Body: io.NopCloser(strings.NewReader("{}"))}, nil
+	return &http.Response{StatusCode: s.code, Body: io.NopCloser(strings.NewReader(`{"results":[]}`))}, nil
 }
 
 // switchTransport antwortet mit dem jeweils eingestellten Status.
 type switchTransport struct{ code *atomic.Int32 }
 
-func (s switchTransport) RoundTrip(*http.Request) (*http.Response, error) {
-	return &http.Response{StatusCode: int(s.code.Load()), Body: io.NopCloser(strings.NewReader("{}"))}, nil
+func (s switchTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	body := `{"results":[]}`
+	if r.Header.Get("X-OTX-API-KEY") == "ungeprueft" {
+		body = "<html>Proxy</html>"
+	}
+	return &http.Response{StatusCode: int(s.code.Load()), Body: io.NopCloser(strings.NewReader(body))}, nil
 }
 
 func buildWithTransport(rt http.RoundTripper, opt Options) *Server {
@@ -76,15 +80,19 @@ func TestRejectedKeyIsNotSaved(t *testing.T) {
 func TestUnverifiedKeyKeepsWorkingKey(t *testing.T) {
 	var code atomic.Int32
 	code.Store(200)
-	s, _, _ := keyServer(t, switchTransport{&code}, map[string]string{})
+	s, _, dir := keyServer(t, switchTransport{&code}, map[string]string{})
 	if w := authenticatedRequest(s, "PUT", "/api/key", local, `{"name":"otx","value":"guter-key"}`, nil); w.Code != 200 {
 		t.Fatalf("guter Key: %d %s", w.Code, w.Body.String())
 	}
-	for _, status := range []int32{404, 429, 500} {
+	for _, status := range []int32{200, 404, 429, 500} {
 		code.Store(status)
 		w := authenticatedRequest(s, "PUT", "/api/key", local, `{"name":"otx","value":"ungeprueft"}`, nil)
 		if w.Code != http.StatusBadGateway || !strings.Contains(w.Body.String(), "key_unverified") || engineKey(s, "otx") != "guter-key" {
 			t.Fatalf("HTTP %d: %d %s, aktiver Key %q", status, w.Code, w.Body.String(), engineKey(s, "otx"))
+		}
+		stored, err := os.ReadFile(filepath.Join(dir, "keys.json"))
+		if err != nil || !strings.Contains(string(stored), "guter-key") || strings.Contains(string(stored), "ungeprueft") {
+			t.Fatalf("HTTP %d: gespeicherter Key verändert", status)
 		}
 	}
 }

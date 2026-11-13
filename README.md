@@ -79,18 +79,25 @@ Das Volume `app_data` enthält den gesalzenen Passwort-Hash und die API-Keys. Ke
 - Alle Web-Keys auf einmal zurücksetzen: `docker compose exec app rm /data/keys.json`, dann `docker compose restart app`. Einzelne Keys entfernst du unter **Quellen**.
 - Logs enthalten Anmeldungen, Anzahl der geprüften Werte und Änderungen an API-Keys jeweils mit IP, aber nie die Werte oder Keys selbst. Key-Änderungen zeigt `docker compose logs app | grep API-Key`.
 
-**Update:**
+**Update**
+
+Öffne den vorhandenen Projektordner (oder seinen Unterordner `deploy/`). Der Ordnername darf von `osint-check` abweichen.
 
 ```bash
-cd ~/osint-check
-git log --oneline -1                  # aktuellen Stand notieren, für ein Zurück
-git pull
-cd deploy
-docker compose up -d --build
-docker compose logs app | grep läuft  # zeigt die Versionsnummer
+(
+  set -e
+  projekt=$(git rev-parse --show-toplevel)
+  cd "$projekt"
+  git log --oneline -1  # bisherigen Stand für ein Rollback notieren
+  git switch main
+  git pull --ff-only origin main
+  cd deploy
+  docker compose up -d --build --wait
+  docker compose logs app | grep läuft
+)
 ```
 
-`.env`, `config/` und `certs/` sind von Git ausgenommen und bleiben unverändert. Passwort-Hash, Web-Keys und Zertifikate liegen in Docker-Volumes und bleiben erhalten. Eigene Änderungen an `Caddyfile` oder `docker-compose.yml` bleiben ebenfalls erhalten. Meldet `git pull`, dass sie überschrieben würden: `git stash`, `git pull`, `git stash pop` und bei einem Konflikt die markierten Stellen von Hand zusammenführen. Zurück zur alten Version mit `git checkout <kennung>` und erneut `docker compose up -d --build`, zurück zum neuesten Stand mit `git checkout main`. Alle Nutzer werden beim Update abgemeldet.
+`.env`, `config/` und `certs/` sind von Git ausgenommen und bleiben unverändert. Passwort-Hash, Web-Keys und Zertifikate liegen in Docker-Volumes und bleiben erhalten. Eigene Änderungen an `Caddyfile` oder `docker-compose.yml` bleiben ebenfalls erhalten. Meldet `git pull`, dass sie überschrieben würden: `git stash`, `git pull`, `git stash pop` und bei einem Konflikt die markierten Stellen von Hand zusammenführen. Zurück zur alten Version mit `git checkout <kennung>` und erneut `docker compose up -d --build`, zurück zum neuesten Stand mit dem Update-Block oben. Alle Nutzer werden beim Update abgemeldet.
 
 **Komplett neu aufsetzen:**
 
