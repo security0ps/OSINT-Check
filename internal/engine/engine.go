@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -125,6 +126,22 @@ func (e *Engine) SetKey(keyName, value string) {
 			s.Key = value
 		}
 	}
+}
+
+// TestKey prüft einen API-Key an einer Stelle des Dienstes, die einen gültigen
+// Key verlangt. nil heißt: Der Dienst hat den Key angenommen. Die Abfrage
+// läuft über das Limit der Quelle und zählt mit.
+func (e *Engine) TestKey(ctx context.Context, keyName, key string) error {
+	for _, cfg := range e.Sources() {
+		if cfg.Source.KeyName != keyName || cfg.Source.Verify == nil {
+			continue
+		}
+		if err := cfg.Limiter.Wait(ctx); err != nil {
+			return fmt.Errorf("%w: %w", sources.ErrKeyUnverified, err)
+		}
+		return cfg.Source.Verify(ctx, e.client, key)
+	}
+	return sources.ErrKeyUnverified
 }
 
 // SetInternalDomains ändert die Liste eigener Domains.

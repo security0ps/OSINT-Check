@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/pbkdf2"
 	"crypto/rand"
 	"crypto/sha256"
@@ -9,11 +10,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
+	"time"
+
+	"osint-check/internal/sources"
 )
 
 type passwordRecord struct {
@@ -27,6 +33,8 @@ type Credentials struct {
 	password passwordRecord
 	setup    string
 	keys     map[string]string
+	base     map[string]string // Keys aus .env oder config.json
+	keyOp    sync.Mutex        // Key-Änderungen nacheinander, inklusive Test
 }
 
 func OpenCredentials(dir string, existingPassword string) (*Credentials, error) {
@@ -78,6 +86,10 @@ func (c *Credentials) write(name string, data []byte) error {
 
 // ApplyKeys runs once before serving requests. Web entries override config defaults.
 func (c *Credentials) ApplyKeys(keys map[string]string) {
+	c.base = make(map[string]string, len(keys))
+	for name, value := range keys {
+		c.base[name] = value
+	}
 	for name, value := range c.keys {
 		keys[name] = value
 	}
@@ -152,6 +164,10 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
+// handleKey speichert, ersetzt oder entfernt einen API-Key aus der Weboberfläche.
+// Ein neuer Key wird nur gespeichert, wenn der Dienst ihn nachweislich annimmt.
+// Sonst bleibt der bisherige Key aktiv. Änderungen laufen nacheinander und
+// landen im Log, der Key selbst nie.
 func (s *Server) handleKey(w http.ResponseWriter, r *http.Request) {
 	var body struct{ Name, Value string }
 	if !readJSON(w, r, &body) {
@@ -165,7 +181,7 @@ func (s *Server) handleKey(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
-	if !valid || body.Value == "" || len(body.Value) > 4096 || strings.ContainsAny(body.Value, "\r\n") {
+	if !valid || len(body.Value) > 4096 || strings.ContainsAny(body.Value, "\r\n") {
 		writeError(w, 400, "invalid_request", "Ungültige Anfrage")
 		return
 	}
@@ -174,19 +190,63 @@ func (s *Server) handleKey(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 403, "settings_managed", "Schlüsselverwaltung deaktiviert")
 		return
 	}
+	ip := s.clientIP(r)
+	c.keyOp.Lock()
+	defer c.keyOp.Unlock()
+	if body.Value != "" {
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		err := s.eng.TestKey(ctx, body.Name, body.Value)
+		cancel()
+		if errors.Is(err, sources.ErrUnauthorized) {
+			log.Printf("API-Key für %s vom Dienst abgelehnt, nicht gespeichert: %s", body.Name, ip)
+			writeError(w, 400, "key_rejected", "Der Dienst hat den Key abgelehnt. Er wurde nicht gespeichert")
+			return
+		}
+		if err != nil {
+			log.Printf("API-Key für %s nicht prüfbar, nicht gespeichert: %s", body.Name, ip)
+			writeError(w, http.StatusBadGateway, "key_unverified", err.Error()+". Der Key wurde nicht gespeichert")
+			return
+		}
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	keys := make(map[string]string, len(c.keys)+1)
 	for k, v := range c.keys {
 		keys[k] = v
 	}
-	keys[body.Name] = body.Value
+	if body.Value == "" {
+		if _, ok := keys[body.Name]; !ok {
+			writeError(w, 400, "invalid_request", "Ungültige Anfrage")
+			return
+		}
+		delete(keys, body.Name)
+	} else {
+		keys[body.Name] = body.Value
+	}
 	data, _ := json.Marshal(keys)
 	if err := c.write("keys.json", data); err != nil {
 		writeError(w, 500, "save_failed", "Einstellungen konnten nicht gespeichert werden")
 		return
 	}
 	c.keys = keys
-	s.eng.SetKey(body.Name, body.Value)
+	if body.Value == "" {
+		s.eng.SetKey(body.Name, c.base[body.Name])
+		log.Printf("API-Key für %s in der Weboberfläche entfernt: %s", body.Name, ip)
+	} else {
+		s.eng.SetKey(body.Name, body.Value)
+		log.Printf("API-Key für %s in der Weboberfläche geändert und geprüft: %s", body.Name, ip)
+	}
 	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
+// webKeys liefert die Namen der in der Weboberfläche gespeicherten Keys.
+func (c *Credentials) webKeys() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	names := make([]string, 0, len(c.keys))
+	for name := range c.keys {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }

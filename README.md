@@ -15,6 +15,7 @@ Warteschlange je Dienst (Limits, Zwischenspeicher 1 h)
         ▼
 VirusTotal · AbuseIPDB · urlscan.io · URLhaus · MalwareBazaar
 ThreatFox · AlienVault OTX · CIRCL hashlookup · Feodo Tracker
+Domain-Alter (RDAP)
         │
         ▼
 Regelbewertung · Details je Quelle · Export (CSV, JSON, Bericht)
@@ -33,17 +34,19 @@ Vor dem Einsatz im Unternehmen unbedingt prüfen. Stand der Angaben: November 20
 | AlienVault OTX | ja | keine festen Angaben gefunden | Laut EULA kostenlos für nicht-kommerzielle Nutzung |
 | CIRCL hashlookup | nein | keine festen Angaben gefunden | Bedingungen vor Einsatz prüfen |
 | Feodo Tracker | nein | Download, 1 h zwischengespeichert | CC0, frei nutzbar |
+| Domain-Alter (RDAP) | nein | 30/Minute, Registry-Verzeichnis 24 h zwischengespeichert | Öffentliche Registrierungsdaten direkt von der Registry |
 
 Das Tool setzt keine Lizenz durch. Bezahlte Limits trägst du unter `limits` in der `config.json` ein, einzelne Dienste schaltest du mit `disabled_sources` ab. Mehrere Gratis-Konten zur Limit-Umgehung sind bei VirusTotal und AbuseIPDB verboten.
 
 ## Installation mit Docker Compose
 
-Voraussetzung ist Docker mit Compose. Die Konfiguration liegt in `deploy/`.
+Voraussetzung ist Docker mit Compose und Git. Die Konfiguration liegt in `deploy/`.
 
 **Erstinstallation**
 
 ```bash
-cd deploy
+git clone https://github.com/security0ps/OSINT-Check.git osint-check
+cd osint-check/deploy
 cp -i .env.example .env
 chmod 600 .env                    # danach SITE_ADDRESS eintragen
 mkdir -p config
@@ -55,7 +58,9 @@ docker compose exec app cat /data/setup-code
 
 Öffne die konfigurierte HTTPS-Adresse. Gib bei der ersten Einrichtung den Code aus dem letzten Befehl ein und lege ein Team-Passwort mit mindestens 12 Zeichen fest. Der Code gilt einmal und wird bei einem Neustart vor der Einrichtung erneuert. Wenn bereits ein Passwort über die Umgebung oder Konfiguration gesetzt ist, entfällt der Code und du kannst dich direkt anmelden.
 
-API-Keys kannst du auf zwei Wegen setzen: in der `.env` (`OSINT_VIRUSTOTAL_KEY` usw.) oder nach der Anmeldung unter **Quellen** in der Weboberfläche. Das können alle Personen mit Team-Passwort. **Ein Key aus der Weboberfläche überschreibt den Key desselben Dienstes aus der `.env`**, auch nach Neustarts. Wer einen Key später in der `.env` tauscht, muss deshalb den Web-Key zurücksetzen (siehe Betrieb). Die drei abuse.ch-Quellen teilen sich einen Key.
+API-Keys kannst du auf zwei Wegen setzen: in der `.env` (`OSINT_VIRUSTOTAL_KEY` usw.) oder nach der Anmeldung unter **Quellen** in der Weboberfläche. Das können alle Personen mit Team-Passwort. **Ein Key aus der Weboberfläche überschreibt den Key desselben Dienstes aus der `.env`**, auch nach Neustarts. Wer einen Key später in der `.env` tauscht, muss deshalb den Web-Key entfernen. Das geht unter **Quellen** mit „Web-Key entfernen“, danach gilt wieder der Key aus der `.env`. Die drei abuse.ch-Quellen teilen sich einen Key.
+
+Ein neuer Key wird vor dem Speichern beim Dienst getestet, mit einer Anfrage, die einen gültigen Key verlangt. Gespeichert wird er nur, wenn der Dienst ihn annimmt. Lehnt der Dienst ihn ab oder ist er nicht erreichbar, wird nichts gespeichert und der bisherige Key bleibt aktiv. Der Test kann als eine Abfrage im Kontingent des Dienstes zählen.
 
 Das Volume `app_data` enthält den gesalzenen Passwort-Hash und die API-Keys. Keys werden für Abfragen im Klartext benötigt. Schütze das Volume und seine Backups wie deine `.env`. Beim Austausch des Containers wird das Volume weiterverwendet. `docker compose down -v` löscht die Volumes einschließlich der Zugangsdaten.
 
@@ -71,8 +76,32 @@ Das Volume `app_data` enthält den gesalzenen Passwort-Hash und die API-Keys. Ke
 
 - Passwort zurücksetzen (im Browser festgelegt): `docker compose exec app rm /data/password.json`, dann `docker compose restart app` und den neuen Code mit `docker compose exec app cat /data/setup-code` abrufen. Danach im Browser ein neues Passwort festlegen. Alle werden abgemeldet.
 - Passwort über `.env` setzen: `OSINT_PASSWORD` eintragen und `docker compose up -d`. Es hat Vorrang vor dem im Browser festgelegten Passwort. Alle werden abgemeldet.
-- Web-Keys zurücksetzen, damit wieder die Keys aus der `.env` gelten: `docker compose exec app rm /data/keys.json`, dann `docker compose restart app`. Das entfernt alle in der Weboberfläche gespeicherten Keys.
-- Logs enthalten Anmeldungen und Anzahl der geprüften Werte mit IP, aber nie die Werte selbst.
+- Alle Web-Keys auf einmal zurücksetzen: `docker compose exec app rm /data/keys.json`, dann `docker compose restart app`. Einzelne Keys entfernst du unter **Quellen**.
+- Logs enthalten Anmeldungen, Anzahl der geprüften Werte und Änderungen an API-Keys jeweils mit IP, aber nie die Werte oder Keys selbst. Key-Änderungen zeigt `docker compose logs app | grep API-Key`.
+
+**Update:**
+
+```bash
+cd ~/osint-check
+git log --oneline -1                  # aktuellen Stand notieren, für ein Zurück
+git pull
+cd deploy
+docker compose up -d --build
+docker compose logs app | grep läuft  # zeigt die Versionsnummer
+```
+
+`.env`, `config/` und `certs/` sind von Git ausgenommen und bleiben unverändert. Passwort-Hash, Web-Keys und Zertifikate liegen in Docker-Volumes und bleiben erhalten. Eigene Änderungen an `Caddyfile` oder `docker-compose.yml` bleiben ebenfalls erhalten. Meldet `git pull`, dass sie überschrieben würden: `git stash`, `git pull`, `git stash pop` und bei einem Konflikt die markierten Stellen von Hand zusammenführen. Zurück zur alten Version mit `git checkout <kennung>` und erneut `docker compose up -d --build`, zurück zum neuesten Stand mit `git checkout main`. Alle Nutzer werden beim Update abgemeldet.
+
+**Komplett neu aufsetzen:**
+
+```bash
+cd ~/osint-check/deploy
+cp .env config/config.json ~/         # optional: Einstellungen sichern
+docker compose down -v --rmi local    # Container, Volumes und gebautes Image löschen
+cd ~ && rm -rf osint-check
+```
+
+Das löscht auch Passwort, Web-Keys und Zertifikate. Bei `tls internal` muss das neue Root-Zertifikat danach neu verteilt werden. Nur die App zurücksetzen und die Zertifikate behalten: `docker compose down`, `docker volume rm deploy_app_data` (Name mit `docker volume ls` prüfen), `docker compose up -d`.
 
 **HTTPS-Inspektion (SSL-Scanning) auf Ubuntu.** Wenn der Firmenproxy ausgehende API-Verbindungen prüft, muss seine CA im Zertifikatsspeicher des Docker-Hosts enthalten sein. Ist `/etc/ssl/certs/ca-certificates.crt` auf dem Host als Bundle-Datei vorhanden, ergänze in `deploy/docker-compose.yml` unter `services.app.volumes` diese Zeile:
 
@@ -115,7 +144,7 @@ In den Details jedes Werts gibt es Buttons zu ANY.RUN TI Lookup, zu ANY.RUN Safe
 | Nicht geprüft | keine Quelle hat geantwortet |
 | Intern | wurde bewusst nicht abgefragt |
 
-Die Dienste von abuse.ch zählen zusammen als eine Stimme. VirusTotal stuft Dateien ab 15 Engines als bösartig ein, URLs, Domains und IPs ab 5. AbuseIPDB gilt ab Score 70 als bösartig und ab 40 als verdächtig. Die Schwellen stehen in `internal/sources/adapters.go` und sollten an eure Praxis angepasst werden. Vor dem Blockieren immer manuell prüfen, besonders bei CDN-Adressen.
+Die Dienste von abuse.ch zählen zusammen als eine Stimme. Eine Domain, die vor weniger als 30 Tagen registriert wurde, gilt als verdächtig. VirusTotal stuft Dateien ab 15 Engines als bösartig ein, URLs, Domains und IPs ab 5. AbuseIPDB gilt ab Score 70 als bösartig und ab 40 als verdächtig. Die Schwellen stehen in `internal/sources/adapters.go` und sollten an eure Praxis angepasst werden. Vor dem Blockieren immer manuell prüfen, besonders bei CDN-Adressen.
 
 ## Bekannte Grenzen
 
@@ -123,4 +152,5 @@ Die Dienste von abuse.ch zählen zusammen als eine Stimme. VirusTotal stuft Date
 - Die Tageszähler liegen im Speicher und beginnen nach einem Neustart bei 0.
 - Mit 4 Abfragen pro Minute dauern 100 Werte bei VirusTotal rund 25 Minuten. Die Oberfläche muss dabei offen bleiben, verlassene Prüfungen enden nach 3 Minuten.
 - In Firmennetzen bei Bedarf `HTTPS_PROXY` und `NO_PROXY` in der Dienstumgebung setzen.
+- Domain-Alter: Nicht jede Endung veröffentlicht das Registrierungsdatum per RDAP, dann steht dort „nicht veröffentlicht“. Ausgehend müssen `data.iana.org` und die RDAP-Server der Registries erreichbar sein.
 - Kann die Feodo-Liste nach Ablauf ihres einstündigen Caches nicht aktualisiert werden, wird die Quelle als Fehler angezeigt. Veraltete Listen werden nicht als aktuelle Prüfung verwendet.

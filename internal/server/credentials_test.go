@@ -15,7 +15,7 @@ func TestFirstRunAndStoredKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := build(t, Options{Credentials: c})
+	s := buildWithTransport(statusTransport{200}, Options{Credentials: c})
 	code, err := os.ReadFile(filepath.Join(dir, "setup-code"))
 	if err != nil {
 		t.Fatal(err)

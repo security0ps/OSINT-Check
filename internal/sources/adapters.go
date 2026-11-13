@@ -32,6 +32,7 @@ func virusTotal() *Source {
 		License: "Public API nicht für kommerzielle Produkte und Geschäftsprozesse",
 		Signup:  "https://www.virustotal.com/gui/join-us",
 		Check:   checkVT,
+		Verify:  verifyVT,
 	}
 }
 
@@ -138,6 +139,7 @@ func abuseIPDB() *Source {
 		License: nonCommercial,
 		Signup:  "https://www.abuseipdb.com/register?plan=free",
 		Check:   checkAbuseIPDB,
+		Verify:  verifyAbuseIPDB,
 	}
 }
 
@@ -205,6 +207,7 @@ func urlscan() *Source {
 		License: "Kommerzielle Nutzung braucht laut AGB eine schriftliche Erlaubnis",
 		Signup:  "https://urlscan.io/user/signup/",
 		Check:   checkURLScan,
+		Verify:  verifyURLscan,
 	}
 }
 
@@ -307,6 +310,7 @@ func urlhaus() *Source {
 		License: abuseChLicense,
 		Signup:  "https://auth.abuse.ch/",
 		Check:   checkURLhaus,
+		Verify:  verifyAbuseCh,
 	}
 }
 
@@ -569,6 +573,7 @@ func otx() *Source {
 		License: nonCommercial,
 		Signup:  "https://otx.alienvault.com/",
 		Check:   checkOTX,
+		Verify:  verifyOTX,
 	}
 }
 

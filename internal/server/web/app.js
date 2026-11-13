@@ -414,6 +414,8 @@
 
   // --- Quellen -----------------------------------------------------------
 
+  let keyBusy = false; // nur eine Key-Änderung zur Zeit
+
   function renderSources() {
     const box = $('sourcesList');
     box.replaceChildren();
@@ -446,26 +448,42 @@
         input.autocomplete = 'off';
         const caption = el('label', '', t('Neuer API-Key für ', 'New API key for ') + names);
         caption.append(input);
-        const save = el('button', 'btn', t('Speichern', 'Save'));
+        const save = el('button', 'btn', t('Testen und speichern', 'Test and save'));
         form.append(caption, save);
-        form.addEventListener('submit', async event => {
-          event.preventDefault();
-          save.disabled = true;
+        const send = async (value, done) => {
+          if (keyBusy) return;
+          keyBusy = true;
+          box.querySelectorAll('button').forEach(b => { b.disabled = true; });
+          $('keyStatus').textContent = value ? t('Key wird beim Dienst getestet …', 'Testing key with the service …') : '';
           try {
-            await api('key', 'PUT', { name: s.key_name, value: input.value });
+            await api('key', 'PUT', { name: s.key_name, value });
             input.value = '';
             meta = await api('meta');
             applyMeta();
             renderSources();
-            $('keyStatus').textContent = names + t(': gespeichert', ': saved');
+            $('keyStatus').textContent = names + done;
           } catch (error) {
             if (error.status === 401) { location.reload(); return; }
-            $('keyStatus').textContent = message(error.message, error.code);
+            $('keyStatus').textContent = names + ': ' + message(error.message, error.code);
           } finally {
-            save.disabled = false;
+            keyBusy = false;
+            box.querySelectorAll('button').forEach(b => { b.disabled = false; });
           }
+        };
+        form.addEventListener('submit', event => {
+          event.preventDefault();
+          send(input.value, t(': geprüft und gespeichert', ': tested and saved'));
         });
         row.append(form);
+        if ((meta.web_keys || []).includes(s.key_name)) {
+          const remove = el('button', 'btn ghost small', t('Web-Key entfernen', 'Remove web key'));
+          remove.type = 'button';
+          remove.title = t('Danach gilt wieder der Key aus der .env, falls vorhanden', 'The key from .env applies again, if set');
+          remove.addEventListener('click', () => {
+            if (confirm(t('Web-Key für ', 'Remove web key for ') + names + '?')) send('', t(': Web-Key entfernt', ': web key removed'));
+          });
+          row.append(remove);
+        }
       }
       box.append(row);
     });
